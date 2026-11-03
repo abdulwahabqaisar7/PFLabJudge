@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}User Profile{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-3">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between py-3">
+                <h5 class="mb-0"><i class="bi bi-person-badge-fill text-warning me-2"></i>Account Details</h5>
+                <span class="badge {{ 'badge-role-teacher' if user.is_teacher else 'badge-role-student' }}">
+                    {{ user.role|capitalize }}
+                </span>
+            </div>
+            <div class="card-body p-4">
+                <table class="table table-bordered mb-4">
+                    <tbody>
+                        <tr>
+                            <th class="w-25 bg-light">Full Name</th>
+                            <td>{{ user.name }}</td>
+                        </tr>
+                        <tr>
+                            <th class="bg-light">Username</th>
+                            <td><code>{{ user.username }}</code></td>
+                        </tr>
+                        {% if user.roll_no %}
+                            <tr>
+                                <th class="bg-light">Roll Number</th>
+                                <td><code>{{ user.roll_no }}</code></td>
+                            </tr>
+                        {% endif %}
+                        <tr>
+                            <th class="bg-light">Role</th>
+                            <td>{{ user.role|capitalize }}</td>
+                        </tr>
+                        <tr>
+                            <th class="bg-light">Member Since</th>
+                            <td>{{ user.created_at|format_pkt('%Y-%m-%d %H:%M PKT') if user.created_at else 'N/A' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{{ url_for('auth.change_password') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-key me-1"></i> Change Password
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

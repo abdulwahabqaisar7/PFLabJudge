@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-9 col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h3 class="mb-1"><i class="bi bi-calendar-plus text-primary me-2"></i>{{ title }}</h3>
+                <div class="text-muted">Link a programming problem to a class section and define schedule and submission constraints.</div>
+            </div>
+            <a href="{{ url_for('teacher.assignments') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i> Back to Assignments
+            </a>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+
+                    <div class="mb-3">
+                        <label class="form-label font-weight-bold" for="title">{{ form.title.label.text }}</label>
+                        {{ form.title(class="form-control" + (" is-invalid" if form.title.errors else ""), placeholder="e.g. Lab 01: Sum of Two Numbers") }}
+                        {% for error in form.title.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label font-weight-bold" for="class_id">{{ form.class_id.label.text }}</label>
+                            {{ form.class_id(class="form-select" + (" is-invalid" if form.class_id.errors else "")) }}
+                            {% for error in form.class_id.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label font-weight-bold" for="problem_ids">
+                                <i class="bi bi-collection text-primary me-1"></i>Select Problems
+                                <span class="badge bg-primary ms-1">Hold Ctrl / Cmd for Multi-Select</span>
+                            </label>
+                            {{ form.problem_ids(class="form-select" + (" is-invalid" if form.problem_ids.errors else ""), size=4, multiple=True) }}
+                            <div class="form-text small">Select one or more problems to include in this assignment.</div>
+                            {% for error in form.problem_ids.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label font-weight-bold" for="open_date">{{ form.open_date.label.text }}</label>
+                            {{ form.open_date(class="form-control" + (" is-invalid" if form.open_date.errors else ""), placeholder="YYYY-MM-DD HH:MM:SS") }}
+                            {% for error in form.open_date.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                            <div class="form-text small">e.g. <code>2026-11-01 09:00:00</code></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label font-weight-bold" for="due_date">{{ form.due_date.label.text }}</label>
+                            {{ form.due_date(class="form-control" + (" is-invalid" if form.due_date.errors else ""), placeholder="YYYY-MM-DD HH:MM:SS") }}
+                            {% for error in form.due_date.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                            <div class="form-text small">e.g. <code>2026-11-08 23:59:59</code></div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label" for="max_attempts">{{ form.max_attempts.label.text }}</label>
+                            {{ form.max_attempts(class="form-control" + (" is-invalid" if form.max_attempts.errors else "")) }}
+                            {% for error in form.max_attempts.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                            <div class="form-text small">Set <code>0</code> for unlimited submissions.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="late_penalty_percent">{{ form.late_penalty_percent.label.text }}</label>
+                            {{ form.late_penalty_percent(class="form-control" + (" is-invalid" if form.late_penalty_percent.errors else "")) }}
+                            {% for error in form.late_penalty_percent.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                            <div class="form-text small">e.g. <code>10.0</code> for 10% penalty.</div>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-center">
+                            <div class="form-check mt-3">
+                                {{ form.allow_late(class="form-check-input") }}
+                                <label class="form-check-label font-weight-bold" for="allow_late">{{ form.allow_late.label.text }}</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{{ url_for('teacher.assignments') }}" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary px-4 shadow-sm">
+                            <i class="bi bi-check-lg me-1"></i> Save Assignment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

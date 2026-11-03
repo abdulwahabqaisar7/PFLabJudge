@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-xl-10">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h3 class="mb-1"><i class="bi bi-pencil-square text-primary me-2"></i>{{ title }}</h3>
+                <div class="text-muted">Configure problem statement, constraints, checker type, and scoring strategy.</div>
+            </div>
+            <a href="{{ url_for('teacher.problems') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i> Back to Problems
+            </a>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label font-weight-bold" for="title">{{ form.title.label.text }}</label>
+                            {{ form.title(class="form-control" + (" is-invalid" if form.title.errors else ""), placeholder="e.g. Sum of Two Numbers") }}
+                            {% for error in form.title.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="slug">{{ form.slug.label.text }}</label>
+                            {{ form.slug(class="form-control" + (" is-invalid" if form.slug.errors else ""), placeholder="Auto-generated if blank") }}
+                            {% for error in form.slug.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label font-weight-bold" for="statement">{{ form.statement.label.text }}</label>
+                            <small class="text-muted"><i class="bi bi-markdown me-1"></i>Supports Markdown, Math ($LaTeX$), and Tables</small>
+                        </div>
+                        {{ form.statement(class="form-control font-monospace" + (" is-invalid" if form.statement.errors else ""), rows=12, placeholder="# Problem Title\n\nDescribe the problem here...\n\n## Input Format\n\n## Output Format\n\n## Constraints\n\n## Sample 1\n### Input\n```text\n\n```\n### Output\n```text\n\n```") }}
+                        {% for error in form.statement.errors %}
+                            <div class="invalid-feedback">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label" for="time_limit">{{ form.time_limit.label.text }}</label>
+                            {{ form.time_limit(class="form-control" + (" is-invalid" if form.time_limit.errors else "")) }}
+                            {% for error in form.time_limit.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                            <div class="form-text small">Python automatically receives a 3.0x multiplier.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="memory_limit">{{ form.memory_limit.label.text }}</label>
+                            {{ form.memory_limit(class="form-control" + (" is-invalid" if form.memory_limit.errors else "")) }}
+                            {% for error in form.memory_limit.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="output_limit_mb">{{ form.output_limit_mb.label.text }}</label>
+                            {{ form.output_limit_mb(class="form-control" + (" is-invalid" if form.output_limit_mb.errors else "")) }}
+                            {% for error in form.output_limit_mb.errors %}
+                                <div class="invalid-feedback">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label" for="checker_type">{{ form.checker_type.label.text }}</label>
+                            {{ form.checker_type(class="form-select", id="checkerTypeSelect") }}
+                        </div>
+                        <div class="col-md-4" id="floatToleranceDiv">
+                            <label class="form-label" for="float_tolerance">{{ form.float_tolerance.label.text }}</label>
+                            {{ form.float_tolerance(class="form-control") }}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="scoring_mode">{{ form.scoring_mode.label.text }}</label>
+                            {{ form.scoring_mode(class="form-select") }}
+                        </div>
+                    </div>
+
+                    <div class="mb-4 d-none" id="customCheckerDiv">
+                        <label class="form-label font-weight-bold" for="checker_code">{{ form.checker_code.label.text }}</label>
+                        {{ form.checker_code(class="form-control font-monospace", rows=6, placeholder="#!/usr/bin/env python3\n# sys.argv: [checker, input_file, expected_file, actual_file]\n# Exit 0 on AC, non-zero on WA") }}
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{{ url_for('teacher.problems') }}" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary px-4 shadow-sm">
+                            <i class="bi bi-check-lg me-1"></i> Save Problem
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const checkerSelect = document.getElementById('checkerTypeSelect');
+    const customDiv = document.getElementById('customCheckerDiv');
+    const floatDiv = document.getElementById('floatToleranceDiv');
+
+    function updateCheckerVisibility() {
+        if (!checkerSelect) return;
+        if (checkerSelect.value === 'custom') {
+            customDiv.classList.remove('d-none');
+            floatDiv.classList.add('d-none');
+        } else if (checkerSelect.value === 'float') {
+            floatDiv.classList.remove('d-none');
+            customDiv.classList.add('d-none');
+        } else {
+            customDiv.classList.add('d-none');
+            floatDiv.classList.add('d-none');
+        }
+    }
+    if (checkerSelect) {
+        checkerSelect.addEventListener('change', updateCheckerVisibility);
+        updateCheckerVisibility();
+    }
+</script>
+{% endblock %}

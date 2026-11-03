@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}My Assignments{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1"><i class="bi bi-journal-check text-primary me-2"></i>Assignments</h2>
+        <div class="text-muted">Review deadlines, maximum allowed attempts, and submit your code solutions.</div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% if assignments %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Class</th>
+                            <th>Assignment Title</th>
+                            <th>Problem</th>
+                            <th>Due Date (PKT)</th>
+                            <th>Status</th>
+                            <th>Attempts</th>
+                            <th>Best Score</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in assignments %}
+                            {% set st = stats[a.id] %}
+                            <tr>
+                                <td><span class="badge bg-dark font-monospace">{{ a.classroom.code }}</span></td>
+                                <td><strong>{{ a.title }}</strong></td>
+                                <td>
+                                    {% if a.problems|length == 1 %}
+                                        {{ a.problems[0].title }}
+                                    {% else %}
+                                        <a href="{{ url_for('student.assignment_detail', assignment_id=a.id) }}" class="text-decoration-none">
+                                            <span class="badge bg-primary me-1">{{ a.problems|length }} Problems</span>
+                                            <span class="small text-muted">View list &rarr;</span>
+                                        </a>
+                                    {% endif %}
+                                </td>
+                                <td class="small">{{ a.due_date|format_pkt if a.due_date else '' }}</td>
+                                <td>
+                                    {% if not a.is_active() and not a.is_late() %}
+                                        <span class="badge bg-secondary">Upcoming</span>
+                                    {% elif a.is_active() %}
+                                        <span class="badge bg-success">Active</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Closed</span>
+                                    {% endif %}
+                                    {% if a.allow_late and a.is_late() %}
+                                        <span class="badge bg-warning text-dark ms-1">Late (-{{ a.late_penalty_percent }}%)</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ st.attempts }}
+                                    {% if a.max_attempts > 0 %}
+                                        <span class="text-muted small">/ {{ a.max_attempts }} max</span>
+                                    {% else %}
+                                        <span class="text-muted small">(unlimited)</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if st.best_score is not none %}
+                                        <strong class="text-primary">{{ st.best_score }}</strong> / {{ a.total_marks }}
+                                        {% if st.latest_verdict == 'AC' %}
+                                            <span class="badge bg-success ms-1">AC</span>
+                                        {% elif st.latest_verdict %}
+                                            <span class="badge bg-secondary ms-1">{{ st.latest_verdict }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">&mdash;</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if a.problems|length > 1 %}
+                                        <a href="{{ url_for('student.assignment_detail', assignment_id=a.id) }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-list-task me-1"></i> View Problems
+                                        </a>
+                                    {% else %}
+                                        <a href="{{ url_for('student.assignment_problem', assignment_id=a.id) }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-code-slash me-1"></i> Open & Solve
+                                        </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="p-5 text-center text-muted">
+                <i class="bi bi-journal-x fs-1 d-block mb-3 text-secondary"></i>
+                <h5>No Assignments Available</h5>
+                <p>No assignments have been assigned to your classes yet.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

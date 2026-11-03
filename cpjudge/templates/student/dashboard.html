@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Student Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-mortarboard-fill text-primary me-2"></i>Welcome, {{ current_user.name }}
+        </h2>
+        <div class="text-muted">
+            Roll Number: <code class="fw-bold">{{ current_user.roll_no or current_user.username }}</code> &bull;
+            Enrolled in <strong>{{ enrollments|length }}</strong> class section(s)
+        </div>
+    </div>
+    <a href="{{ url_for('student.history') }}" class="btn btn-outline-primary">
+        <i class="bi bi-clock-history me-1"></i> Submission History
+    </a>
+</div>
+
+<!-- Enrolled Classes -->
+<div class="row g-3 mb-4">
+    {% for enr in enrollments %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="badge bg-dark font-monospace">{{ enr.classroom.code }}</span>
+                        <small class="text-muted"><i class="bi bi-person me-1"></i>{{ enr.classroom.teacher.name }}</small>
+                    </div>
+                    <h5 class="card-title font-weight-bold mb-1">{{ enr.classroom.name }}</h5>
+                    <p class="card-text text-muted small text-truncate">{{ enr.classroom.description or 'No course description.' }}</p>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-info shadow-sm">
+                <i class="bi bi-info-circle me-2"></i>You are not currently enrolled in any classes. Please contact your instructor.
+            </div>
+        </div>
+    {% endfor %}
+</div>
+
+<!-- Active Assignments -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 font-weight-bold"><i class="bi bi-journal-check text-primary me-2"></i>Current Assignments</h5>
+        <a href="{{ url_for('student.assignments') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+    </div>
+    <div class="card-body p-0">
+        {% if assignments %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Assignment</th>
+                            <th>Class</th>
+                            <th>Problem</th>
+                            <th>Due Date (PKT)</th>
+                            <th>Status</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in assignments %}
+                            <tr>
+                                <td><strong>{{ a.title }}</strong></td>
+                                <td><span class="badge bg-light text-dark border font-monospace">{{ a.classroom.code }}</span></td>
+                                <td>
+                                    {% if a.problems|length > 1 %}
+                                        <span class="badge bg-primary me-1">{{ a.problems|length }} Problems</span>
+                                        <small class="text-muted">{{ a.problems[0].title }}, ...</small>
+                                    {% elif a.problems|length == 1 %}
+                                        {{ a.problems[0].title }}
+                                    {% else %}
+                                        {{ a.problem.title if a.problem else 'None' }}
+                                    {% endif %}
+                                </td>
+                                <td class="small">{{ a.due_date|format_pkt if a.due_date else '' }}</td>
+                                <td>
+                                    {% if not a.is_active() and not a.is_late() %}
+                                        <span class="badge bg-secondary">Upcoming</span>
+                                    {% elif a.is_active() %}
+                                        <span class="badge bg-success">Open</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Closed</span>
+                                    {% endif %}
+                                    {% if a.allow_late and a.is_late() %}
+                                        <span class="badge bg-warning text-dark ms-1">Late (-{{ a.late_penalty_percent }}%)</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if a.problems|length > 1 %}
+                                        <a href="{{ url_for('student.assignment_detail', assignment_id=a.id) }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-collection me-1"></i> View Problems
+                                        </a>
+                                    {% else %}
+                                        <a href="{{ url_for('student.assignment_problem', assignment_id=a.id) }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-code-slash me-1"></i> Solve Problem
+                                        </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="p-4 text-center text-muted">
+                <i class="bi bi-check2-circle fs-2 d-block mb-2 text-success"></i>
+                No active assignments at the moment.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Recent Submissions -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 font-weight-bold"><i class="bi bi-clock-history text-primary me-2"></i>My Recent Submissions</h5>
+        <a href="{{ url_for('student.history') }}" class="btn btn-sm btn-outline-secondary">Full History</a>
+    </div>
+    <div class="card-body p-0">
+        {% if recent_submissions %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Problem</th>
+                            <th>Language</th>
+                            <th>Verdict</th>
+                            <th>Score</th>
+                            <th>Submitted (PKT)</th>
+                            <th class="text-end"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in recent_submissions %}
+                            <tr>
+                                <td><code>#{{ s.id }}</code></td>
+                                <td>{{ s.problem.title }}</td>
+                                <td><span class="badge bg-secondary font-monospace">{{ s.language|upper }}</span></td>
+                                <td>
+                                    {% if s.status == 'queued' %}
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-hourglass me-1"></i>Queued</span>
+                                    {% elif s.status == 'judging' %}
+                                        <span class="badge bg-info text-dark"><i class="bi bi-gear-wide-connected me-1"></i>Judging</span>
+                                    {% elif s.verdict == 'AC' %}
+                                        <span class="badge bg-success">AC (Accepted)</span>
+                                    {% elif s.verdict == 'WA' %}
+                                        <span class="badge bg-danger">WA (Wrong Answer)</span>
+                                    {% elif s.verdict == 'CE' %}
+                                        <span class="badge bg-secondary">CE (Compilation Error)</span>
+                                    {% else %}
+                                        <span class="badge bg-dark">{{ s.verdict or 'N/A' }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if s.has_current_score %}
+                                        <strong>{{ s.score.final_score }}</strong> / {{ s.score.max_possible_score }}
+                                    {% else %}
+                                        &mdash;
+                                    {% endif %}
+                                </td>
+                                <td class="small text-muted">{{ s.created_at|format_pkt if s.created_at else '' }}</td>
+                                <td class="text-end">
+                                    <a href="{{ url_for('student.submission_detail', submission_id=s.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i> Detail
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="p-4 text-center text-muted">
+                You haven't submitted any solutions yet.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

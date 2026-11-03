@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Logs{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+        <h2 class="mb-1"><i class="bi bi-shield-check text-primary me-2"></i>System Audit Logs</h2>
+        <div class="text-muted">Immutable audit trail of administrative actions, test modifications, rejudges, and student imports.</div>
+    </div>
+    <form method="GET" action="{{ url_for('teacher.audit_logs') }}" class="d-flex gap-2 align-items-center">
+        <label for="action-filter" class="small text-muted fw-bold mb-0">Action:</label>
+        <select name="action" id="action-filter" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">-- All Actions --</option>
+            {% for act in distinct_actions %}
+                <option value="{{ act }}" {% if act == selected_action %}selected{% endif %}>{{ act }}</option>
+            {% endfor %}
+        </select>
+        {% if selected_action %}
+            <a href="{{ url_for('teacher.audit_logs') }}" class="btn btn-sm btn-outline-secondary text-nowrap">Clear</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% if logs %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 font-monospace small">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Timestamp (PKT)</th>
+                            <th>Action</th>
+                            <th>User</th>
+                            <th>Target</th>
+                            <th>IP Address</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                            <tr>
+                                <td>{{ log.created_at|format_pkt('%Y-%m-%d %H:%M:%S') if log.created_at else '' }}</td>
+                                <td><span class="badge bg-primary text-uppercase">{{ log.action }}</span></td>
+                                <td>
+                                    {% if log.user %}
+                                        <strong>{{ log.user.username }}</strong>
+                                        <span class="text-muted">({{ log.user.role }})</span>
+                                    {% else %}
+                                        <span class="text-muted">system</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if log.target_type %}
+                                        <code>{{ log.target_type }}:{{ log.target_id or '' }}</code>
+                                    {% else %}
+                                        &mdash;
+                                    {% endif %}
+                                </td>
+                                <td><code>{{ log.ip_address or 'local' }}</code></td>
+                                <td class="text-break" style="max-width: 400px;">
+                                    {{ log.details }}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="p-5 text-center text-muted">
+                <i class="bi bi-shield-slash fs-1 d-block mb-3"></i>
+                No audit log entries found.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Submission #{{ submission.id }} - {{ submission.problem.title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='codemirror/codemirror.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='codemirror/dracula.min.css') }}">
+<style>
+    .CodeMirror {
+        height: auto;
+        border-radius: 4px;
+        font-size: 0.95rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('teacher.submissions') }}">Submissions</a></li>
+                <li class="breadcrumb-item active">#{{ submission.id }}</li>
+            </ol>
+        </nav>
+        <h3 class="mb-0">
+            <i class="bi bi-file-earmark-code text-primary me-2"></i>Submission #{{ submission.id }}
+            {% if submission.is_stale %}
+                <span class="badge bg-warning text-dark ms-2"><i class="bi bi-exclamation-triangle me-1"></i>Tests Stale (v{{ submission.tests_version }} vs v{{ submission.problem.tests_version }})</span>
+            {% endif %}
+        </h3>
+    </div>
+    <div class="d-flex gap-2">
+        <form action="{{ url_for('teacher.rejudge_submission', submission_id=submission.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Rejudge this submission?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-warning shadow-sm font-weight-bold">
+                <i class="bi bi-arrow-repeat me-1"></i> Rejudge Submission
+            </button>
+        </form>
+        <a href="{{ url_for('teacher.submissions') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i> Back to List
+        </a>
+    </div>
+</div>
+
+<!-- Overview Card -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-sm-6 col-md-3">
+                <div class="small text-muted">Student</div>
+                <div class="font-weight-bold fs-6">{{ submission.user.name }}</div>
+                <div class="small text-muted">{{ submission.user.roll_no or submission.user.username }}</div>
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <div class="small text-muted">Problem & Class</div>
+                <div class="font-weight-bold">{{ submission.problem.title }}</div>
+                <div class="small text-muted">{{ submission.assignment.classroom.code if submission.assignment else 'Practice' }}</div>
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <div class="small text-muted">Language & Limits</div>
+                <span class="badge bg-secondary font-monospace">{{ submission.language|upper }}</span>
+                <span class="small text-muted ms-2">{{ "%.3f"|format(submission.max_time or 0) }}s / {{ submission.max_memory_kb or 0 }} KB</span>
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <div class="small text-muted">Verdict & Score</div>
+                <div class="d-flex align-items-center gap-2 mt-1">
+                    {% if submission.verdict == 'AC' %}
+                        <span class="badge bg-success fs-6">AC (Accepted)</span>
+                    {% elif submission.verdict == 'WA' %}
+                        <span class="badge bg-danger fs-6">WA (Wrong Answer)</span>
+                    {% elif submission.verdict == 'TLE' %}
+                        <span class="badge bg-warning text-dark fs-6">TLE (Time Limit)</span>
+                    {% elif submission.verdict == 'MLE' %}
+                        <span class="badge bg-danger fs-6">MLE (Memory Limit)</span>
+                    {% elif submission.verdict == 'RE' %}
+                        <span class="badge bg-danger fs-6">RE (Runtime Error)</span>
+                    {% elif submission.verdict == 'CE' %}
+                        <span class="badge bg-secondary fs-6">CE (Compilation Error)</span>
+                    {% elif submission.verdict == 'OLE' %}
+                        <span class="badge bg-danger fs-6">OLE (Output Limit)</span>
+                    {% else %}
+                        <span class="badge bg-secondary fs-6">{{ submission.status|capitalize }}</span>
+                    {% endif %}
+
+                    {% if submission.has_current_score %}
+                        <strong class="fs-6 text-primary">{{ submission.score.final_score }} / {{ submission.score.max_possible_score }}</strong>
+                    {% elif submission.score %}
+                        <span class="small text-muted">Stale score pending re-evaluation</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Compilation Error Alert if CE -->
+{% if submission.compile_error %}
+    <div class="alert alert-danger shadow-sm border-danger mb-4">
+        <h5 class="alert-heading"><i class="bi bi-x-octagon-fill me-2"></i>Compilation Error (CE)</h5>
+        <pre class="bg-dark text-white p-3 rounded mb-0 mt-2 font-monospace small" style="white-space: pre-wrap;">{{ submission.compile_error }}</pre>
+    </div>
+{% endif %}
+
+<!-- Source Code Viewer -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-dark text-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-code-square text-warning me-2"></i>Submitted Source Code ({{ submission.language|upper }})</h5>
+        <button class="btn btn-sm btn-outline-light" onclick="navigator.clipboard.writeText(document.getElementById('sourceEditor').value); alert('Source code copied to clipboard!');">
+            <i class="bi bi-clipboard me-1"></i> Copy Code
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <textarea id="sourceEditor">{{ submission.source_code }}</textarea>
+    </div>
+</div>
+
+<!-- Detailed Test Cases (Teacher Inspection View) -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3">
+        <h5 class="mb-0 font-weight-bold"><i class="bi bi-cpu me-2 text-primary"></i>Evaluated Test Results (Teacher Debug View)</h5>
+    </div>
+    <div class="card-body p-0">
+        {% if submission.results %}
+            <div class="accordion accordion-flush" id="testsAccordion">
+                {% for r in submission.results %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingTest{{ r.id }}">
+                            <button class="accordion-button collapsed py-3" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTest{{ r.id }}" aria-expanded="false" aria-controls="collapseTest{{ r.id }}">
+                                <div class="d-flex justify-content-between align-items-center w-100 pe-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <strong>Test #{{ r.test_order }}</strong>
+                                        {% if r.verdict == 'AC' %}
+                                            <span class="badge bg-success">AC</span>
+                                        {% elif r.verdict == 'WA' %}
+                                            <span class="badge bg-danger">WA</span>
+                                        {% else %}
+                                            <span class="badge bg-dark">{{ r.verdict }}</span>
+                                        {% endif %}
+
+                                        {% if r.is_hidden %}
+                                            <span class="badge bg-dark ms-1"><i class="bi bi-eye-slash-fill me-1"></i>Hidden</span>
+                                        {% else %}
+                                            <span class="badge bg-light text-dark border ms-1"><i class="bi bi-eye-fill me-1"></i>Visible</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small text-muted">
+                                        <span class="me-3">Marks: <strong>{{ r.marks_awarded }}</strong></span>
+                                        <span class="me-3"><i class="bi bi-stopwatch me-1"></i>{{ "%.3f"|format(r.cpu_time) }}s</span>
+                                        <span><i class="bi bi-memory me-1"></i>{{ r.memory_kb }} KB</span>
+                                    </div>
+                                </div>
+                            </button>
+                        </h2>
+                        <div id="collapseTest{{ r.id }}" class="accordion-collapse collapse" aria-labelledby="headingTest{{ r.id }}" data-bs-parent="#testsAccordion">
+                            <div class="accordion-body bg-light">
+                                <div class="row g-3">
+                                    {% if r.test %}
+                                        <div class="col-md-6">
+                                            <label class="form-label small font-weight-bold text-muted">Test Input (stdin)</label>
+                                            <pre class="bg-white p-2 border rounded font-monospace small" style="max-height: 200px; overflow-y: auto;">{{ r.test.input_data }}</pre>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small font-weight-bold text-muted">Expected Output</label>
+                                            <pre class="bg-white p-2 border rounded font-monospace small" style="max-height: 200px; overflow-y: auto;">{{ r.test.expected_output }}</pre>
+                                        </div>
+                                    {% endif %}
+                                    <div class="col-md-6">
+                                        <label class="form-label small font-weight-bold text-muted">Student Output (stdout)</label>
+                                        <pre class="bg-white p-2 border rounded font-monospace small" style="max-height: 200px; overflow-y: auto;">{{ r.student_output or '(Output suppressed or empty)' }}</pre>
+                                    </div>
+                                    {% if r.diff %}
+                                        <div class="col-md-6">
+                                            <label class="form-label small font-weight-bold text-danger">Unified Diff</label>
+                                            <pre class="bg-dark text-warning p-2 rounded font-monospace small" style="max-height: 200px; overflow-y: auto;">{{ r.diff }}</pre>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                {% if r.feedback %}
+                                    <div class="mt-2 text-muted small">
+                                        <strong>Feedback / Diagnostics:</strong> {{ r.feedback }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="p-4 text-center text-muted">
+                No per-test results available (Submission status: {{ submission.status }}).
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='codemirror/codemirror.min.js') }}"></script>
+<script src="{{ url_for('static', filename='codemirror/clike.min.js') }}"></script>
+<script src="{{ url_for('static', filename='codemirror/python.min.js') }}"></script>
+<script>
+    const modeMap = {
+        'c': 'text/x-csrc',
+        'cpp': 'text/x-c++src',
+        'python': 'text/x-python'
+    };
+    const lang = "{{ submission.language|lower }}";
+    const editor = CodeMirror.fromTextArea(document.getElementById('sourceEditor'), {
+        mode: modeMap[lang] || 'text/plain',
+        theme: 'dracula',
+        lineNumbers: true,
+        readOnly: true,
+        viewportMargin: Infinity
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,57 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: gunicorn --workers 1 --threads 8 --bind 0.0.0.0:5000 "run:app"
+    ports:
+      - "${PORT:-5050}:5000"
+    volumes:
+      - .:/app
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in a .env file}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Karachi
+      - APP_TIMEZONE=Asia/Karachi
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m cpjudge.worker
+    volumes:
+      - .:/app
+    environment:
+      - FLASK_ENV=worker
+      - DATABASE_URL=${DATABASE_URL:-}
+      - USE_BWRAP=${USE_BWRAP:-true}
+      - SANDBOX_USER=${SANDBOX_USER:-judge_sandbox}
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Karachi
+      - APP_TIMEZONE=Asia/Karachi
+    # Required for Linux bubblewrap & setrlimit sandbox capabilities
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    depends_on:
+      - web
+    restart: unless-stopped
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: pytest -v
+    volumes:
+      - .:/app
+    environment:
+      - TZ=Asia/Karachi
+      - APP_TIMEZONE=Asia/Karachi
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined

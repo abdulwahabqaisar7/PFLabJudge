@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Assignments Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1"><i class="bi bi-calendar-event text-primary me-2"></i>Assignments</h2>
+        <div class="text-muted">Create assignments linking problems to classes with deadlines, attempt limits, and late penalties.</div>
+    </div>
+    <a href="{{ url_for('teacher.assignment_new') }}" class="btn btn-primary shadow-sm">
+        <i class="bi bi-plus-circle me-1"></i> Create Assignment
+    </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        {% if assignments %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Assignment Title</th>
+                            <th>Class</th>
+                            <th>Problem</th>
+                            <th>Open Date (PKT)</th>
+                            <th>Due Date (PKT)</th>
+                            <th>Status</th>
+                            <th>Late Policy</th>
+                            <th>Submissions</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in assignments %}
+                            <tr>
+                                <td><strong>{{ a.title }}</strong></td>
+                                <td><span class="badge bg-dark font-monospace">{{ a.classroom.code }}</span></td>
+                                <td>
+                                    {% if a.problems|length == 1 %}
+                                        {{ a.problems[0].title }}
+                                        <span class="badge bg-light text-dark border small ms-1">{{ a.total_marks }} pts</span>
+                                    {% elif a.problems|length > 1 %}
+                                        <span class="badge bg-primary me-1">{{ a.problems|length }} Problems</span>
+                                        <span class="badge bg-light text-dark border small">{{ a.total_marks }} pts</span>
+                                        <div class="small text-muted mt-1">
+                                            {% for p in a.problems %}
+                                                <span class="badge bg-secondary font-monospace" style="font-size: 0.72rem;">{{ p.title }}</span>{% if not loop.last %} {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <span class="text-muted">No problems</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small">{{ a.open_date|format_pkt if a.open_date else '' }}</td>
+                                <td class="small">{{ a.due_date|format_pkt if a.due_date else '' }}</td>
+                                <td>
+                                    {% if not a.is_active() and not a.is_late() %}
+                                        <span class="badge bg-secondary">Upcoming</span>
+                                    {% elif a.is_active() %}
+                                        <span class="badge bg-success">Active</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Closed</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small">
+                                    {% if a.allow_late %}
+                                        <span class="text-warning font-weight-bold">Allowed (-{{ a.late_penalty_percent }}%)</span>
+                                    {% else %}
+                                        <span class="text-muted">No Late</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('teacher.submissions', class_id=a.class_id, problem_id=a.problem_id) }}" class="btn btn-sm btn-outline-info">
+                                        {{ a.submissions|length }} Submissions
+                                    </a>
+                                </td>
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ url_for('teacher.assignment_gradebook', assignment_id=a.id) }}" class="btn btn-outline-success" title="Assignment Gradebook">
+                                            <i class="bi bi-table"></i>
+                                        </a>
+                                        <a href="{{ url_for('teacher.assignment_gradebook_csv', assignment_id=a.id) }}" class="btn btn-outline-secondary" title="Export Gradebook CSV">
+                                            <i class="bi bi-download"></i>
+                                        </a>
+                                        <form action="{{ url_for('teacher.rejudge_assignment', assignment_id=a.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Rejudge all submissions for assignment \'{{ a.title }}\'?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-outline-warning" title="Rejudge All Submissions">
+                                                <i class="bi bi-arrow-repeat"></i>
+                                            </button>
+                                        </form>
+                                        <a href="{{ url_for('teacher.assignment_edit', assignment_id=a.id) }}" class="btn btn-outline-secondary" title="Edit Assignment">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <form action="{{ url_for('teacher.assignment_delete', assignment_id=a.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Delete assignment \'{{ a.title }}\'?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-outline-danger" title="Delete Assignment">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="p-5 text-center text-muted">
+                <i class="bi bi-calendar-x fs-1 d-block mb-3 text-secondary"></i>
+                <h5>No Assignments Created Yet</h5>
+                <p>Assign problems to your classes with deadlines to enable student submissions.</p>
+                <a href="{{ url_for('teacher.assignment_new') }}" class="btn btn-primary mt-2">Create First Assignment</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

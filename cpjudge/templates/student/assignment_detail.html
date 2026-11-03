@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}{{ assignment.title }} - Assignment Overview{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('student.assignments') }}">Assignments</a></li>
+                <li class="breadcrumb-item active">{{ assignment.title }}</li>
+            </ol>
+        </nav>
+        <h3 class="mb-0">
+            <i class="bi bi-journal-bookmark text-primary me-2"></i>{{ assignment.title }}
+            <span class="badge bg-dark font-monospace fs-6 ms-2">{{ assignment.classroom.code }}</span>
+        </h3>
+        <p class="text-muted small mt-1 mb-0">{{ assignment.classroom.name }} &bull; Teacher: {{ assignment.classroom.teacher.name }}</p>
+    </div>
+    <a href="{{ url_for('student.assignments') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i> Back to Assignments
+    </a>
+</div>
+
+<!-- Assignment Info & Progress Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="text-muted small text-uppercase fw-bold">Total Problems</div>
+            <div class="fs-3 fw-bold text-dark mt-1">{{ assignment.problems|length }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="text-muted small text-uppercase fw-bold">Total Earned</div>
+            <div class="fs-3 fw-bold text-primary mt-1">{{ total_earned }} <span class="fs-6 text-muted">/ {{ assignment.total_marks }}</span></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="text-muted small text-uppercase fw-bold">Due Date (PKT)</div>
+            <div class="fs-6 fw-bold text-dark mt-2">{{ assignment.due_date|format_pkt if assignment.due_date else 'No deadline' }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="text-muted small text-uppercase fw-bold">Status</div>
+            <div class="mt-2">
+                {% if not assignment.is_active() and not assignment.is_late() %}
+                    <span class="badge bg-secondary">Upcoming</span>
+                {% elif assignment.is_active() %}
+                    <span class="badge bg-success">Open for Submission</span>
+                {% else %}
+                    <span class="badge bg-danger">Closed</span>
+                {% endif %}
+                {% if assignment.allow_late and assignment.is_late() %}
+                    <span class="badge bg-warning text-dark ms-1">Late (-{{ assignment.late_penalty_percent }}%)</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Problems List in this Assignment -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">
+            <i class="bi bi-collection me-2 text-primary"></i>Problems in this Assignment
+        </h5>
+        <span class="text-muted small">{{ assignment.problems|length }} problem(s) &bull; {{ assignment.total_marks }} total points</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 50px;">#</th>
+                        <th>Problem Title</th>
+                        <th>Limits</th>
+                        <th class="text-center">Attempts</th>
+                        <th class="text-center">Best Verdict</th>
+                        <th class="text-center">Score</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pst in problem_stats %}
+                        {% set prob = pst.problem %}
+                        <tr>
+                            <td><strong>P{{ loop.index }}</strong></td>
+                            <td>
+                                <div><strong class="fs-6">{{ prob.title }}</strong></div>
+                                <div class="text-muted small font-monospace">slug: {{ prob.slug }}</div>
+                            </td>
+                            <td class="small">
+                                <span class="badge bg-light text-dark border"><i class="bi bi-clock me-1"></i>{{ "%.2f"|format(prob.time_limit) }}s</span>
+                                <span class="badge bg-light text-dark border ms-1"><i class="bi bi-memory me-1"></i>{{ prob.memory_limit }} MB</span>
+                            </td>
+                            <td class="text-center">
+                                {{ pst.attempts }}
+                                {% if assignment.max_attempts > 0 %}
+                                    <span class="text-muted small">/ {{ assignment.max_attempts }} max</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if pst.latest_verdict == 'AC' %}
+                                    <span class="badge bg-success">AC</span>
+                                {% elif pst.latest_verdict == 'WA' %}
+                                    <span class="badge bg-danger">WA</span>
+                                {% elif pst.latest_verdict == 'TLE' %}
+                                    <span class="badge bg-warning text-dark">TLE</span>
+                                {% elif pst.latest_verdict == 'MLE' %}
+                                    <span class="badge bg-warning text-dark">MLE</span>
+                                {% elif pst.latest_verdict == 'CE' %}
+                                    <span class="badge bg-secondary">CE</span>
+                                {% elif pst.latest_verdict %}
+                                    <span class="badge bg-secondary">{{ pst.latest_verdict }}</span>
+                                {% else %}
+                                    <span class="badge bg-light text-muted border">Unsubmitted</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if pst.best_score is not none %}
+                                    <strong class="text-primary">{{ pst.best_score }}</strong> / {{ prob.total_marks }}
+                                {% else %}
+                                    <span class="text-muted">&mdash;</span> / {{ prob.total_marks }}
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ url_for('student.assignment_problem', assignment_id=assignment.id, problem_id=prob.id) }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-code-slash me-1"></i> Solve Problem
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

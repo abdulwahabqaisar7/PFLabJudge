@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}My Submissions - CPJudge{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="mb-0 fw-bold">
+            <i class="bi bi-clock-history text-primary me-2"></i>My Submissions
+        </h3>
+        <p class="text-muted small mb-0">Track and review all your past code submissions and results.</p>
+    </div>
+    <a href="{{ url_for('student.assignments') }}" class="btn btn-primary">
+        <i class="bi bi-journal-code me-1"></i> Browse Assignments
+    </a>
+</div>
+
+<!-- Filters Card -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('student.history') }}" class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label for="problemFilter" class="form-label small fw-bold text-muted mb-1">Problem</label>
+                <select name="problem_id" id="problemFilter" class="form-select form-select-sm">
+                    <option value="">-- All Problems --</option>
+                    {% for p in problems %}
+                        <option value="{{ p.id }}" {% if selected_problem == p.id %}selected{% endif %}>
+                            {{ p.title }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label for="verdictFilter" class="form-label small fw-bold text-muted mb-1">Verdict</label>
+                <select name="verdict" id="verdictFilter" class="form-select form-select-sm">
+                    <option value="">-- All Verdicts --</option>
+                    <option value="AC" {% if selected_verdict == 'AC' %}selected{% endif %}>AC (Accepted)</option>
+                    <option value="WA" {% if selected_verdict == 'WA' %}selected{% endif %}>WA (Wrong Answer)</option>
+                    <option value="TLE" {% if selected_verdict == 'TLE' %}selected{% endif %}>TLE (Time Limit Exceeded)</option>
+                    <option value="MLE" {% if selected_verdict == 'MLE' %}selected{% endif %}>MLE (Memory Limit Exceeded)</option>
+                    <option value="RE" {% if selected_verdict == 'RE' %}selected{% endif %}>RE (Runtime Error)</option>
+                    <option value="CE" {% if selected_verdict == 'CE' %}selected{% endif %}>CE (Compilation Error)</option>
+                    <option value="OLE" {% if selected_verdict == 'OLE' %}selected{% endif %}>OLE (Output Limit Exceeded)</option>
+                </select>
+            </div>
+
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-primary flex-grow-1">
+                    <i class="bi bi-funnel me-1"></i> Filter
+                </button>
+                <a href="{{ url_for('student.history') }}" class="btn btn-sm btn-outline-secondary">
+                    Reset
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Submissions Table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3" style="width: 80px;">#ID</th>
+                        <th>Problem</th>
+                        <th>Class / Assignment</th>
+                        <th>Language</th>
+                        <th>Verdict</th>
+                        <th>Score</th>
+                        <th>Runtime</th>
+                        <th>Memory</th>
+                        <th>Submitted At</th>
+                        <th class="text-end pe-3">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in submissions %}
+                        <tr>
+                            <td class="ps-3 fw-bold">#{{ sub.id }}</td>
+                            <td>
+                                <a href="{{ url_for('student.assignment_problem', assignment_id=sub.assignment_id) }}" class="fw-semibold text-decoration-none">
+                                    {{ sub.problem.title }}
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">
+                                    {{ sub.assignment.classroom.code if sub.assignment else 'Practice' }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary font-monospace">{{ sub.language|upper }}</span>
+                            </td>
+                            <td>
+                                {% if sub.verdict == 'AC' %}
+                                    <span class="badge bg-success">AC</span>
+                                {% elif sub.verdict == 'WA' %}
+                                    <span class="badge bg-danger">WA</span>
+                                {% elif sub.verdict == 'TLE' %}
+                                    <span class="badge bg-warning text-dark">TLE</span>
+                                {% elif sub.verdict == 'MLE' %}
+                                    <span class="badge bg-danger">MLE</span>
+                                {% elif sub.verdict == 'RE' %}
+                                    <span class="badge bg-danger">RE</span>
+                                {% elif sub.verdict == 'CE' %}
+                                    <span class="badge bg-secondary">CE</span>
+                                {% elif sub.verdict == 'OLE' %}
+                                    <span class="badge bg-danger">OLE</span>
+                                {% elif sub.status in ['queued', 'judging'] %}
+                                    <span class="badge bg-info text-dark">
+                                        <div class="spinner-border spinner-border-sm me-1" style="width: 0.75rem; height: 0.75rem;"></div>
+                                        {{ sub.status|capitalize }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ sub.status|capitalize }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if sub.has_current_score %}
+                                    <strong class="text-primary">{{ sub.score.final_score }}</strong> / {{ sub.score.max_possible_score }}
+                                    {% if sub.is_late and sub.score.late_penalty_percent > 0 %}
+                                        <span class="badge bg-danger ms-1" title="Late penalty applied">-{{ sub.score.late_penalty_percent }}%</span>
+                                    {% endif %}
+                                {% elif sub.score %}
+                                    <span class="text-muted">Stale</span>
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </td>
+                            <td class="font-monospace small">
+                                {{ "%.3f"|format(sub.max_time) if sub.max_time is not none else '--' }}s
+                            </td>
+                            <td class="font-monospace small">
+                                {{ sub.max_memory_kb if sub.max_memory_kb is not none else '--' }} KB
+                            </td>
+                            <td class="small text-muted">
+                                {{ sub.created_at.strftime('%Y-%m-%d %H:%M') }}
+                            </td>
+                            <td class="text-end pe-3">
+                                <a href="{{ url_for('student.submission_detail', submission_id=sub.id) }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye me-1"></i> View
+                                </a>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox display-6 d-block mb-2 text-secondary"></i>
+                                No submissions found.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}Submission #{{ submission.id }} - {{ submission.problem.title }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='codemirror/codemirror.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='codemirror/dracula.min.css') }}">
+<style>
+    .CodeMirror {
+        height: auto;
+        border-radius: 6px;
+        font-family: 'Consolas', 'Fira Code', 'Monaco', monospace;
+        font-size: 0.95rem;
+    }
+    .test-output-box {
+        background-color: #212529;
+        color: #f8f9fa;
+        border-radius: 4px;
+        padding: 0.5rem 0.75rem;
+        font-family: 'Consolas', 'Fira Code', 'Monaco', monospace;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('student.assignments') }}">Assignments</a></li>
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('student.assignment_problem', assignment_id=submission.assignment_id) }}">
+                        {{ submission.problem.title }}
+                    </a>
+                </li>
+                <li class="breadcrumb-item active">Submission #{{ submission.id }}</li>
+            </ol>
+        </nav>
+        <h3 class="mb-0 fw-bold">
+            <i class="bi bi-file-earmark-code text-primary me-2"></i>Submission #{{ submission.id }}
+            {% if submission.is_stale %}
+                <span class="badge bg-warning text-dark ms-2"><i class="bi bi-exclamation-triangle me-1"></i>Tests Stale</span>
+            {% endif %}
+        </h3>
+    </div>
+    <div>
+        <a href="{{ url_for('student.assignment_problem', assignment_id=submission.assignment_id) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i> Back to Problem
+        </a>
+    </div>
+</div>
+
+<!-- Evaluation Status Banner for Queued / Judging -->
+<div id="statusBanner" class="card border-0 shadow-sm mb-4 {% if submission.status in ['queued', 'judging'] %}border-primary border-start border-4{% endif %}">
+    <div class="card-body">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-3">
+                <div class="small text-muted">Status</div>
+                <div class="d-flex align-items-center gap-2 mt-1">
+                    {% if submission.status in ['queued', 'judging'] %}
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <span class="fw-bold text-primary" id="statusText">{{ submission.status|capitalize }}...</span>
+                    {% elif submission.status == 'done' %}
+                        <span class="badge bg-success fs-6"><i class="bi bi-check-circle-fill me-1"></i>Completed</span>
+                    {% elif submission.status == 'error' %}
+                        <span class="badge bg-danger fs-6"><i class="bi bi-x-circle-fill me-1"></i>Judge Error</span>
+                    {% else %}
+                        <span class="badge bg-secondary fs-6">{{ submission.status|capitalize }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="small text-muted">Verdict</div>
+                <div class="mt-1">
+                    {% if submission.verdict == 'AC' %}
+                        <span class="badge bg-success fs-6">AC (Accepted)</span>
+                    {% elif submission.verdict == 'WA' %}
+                        <span class="badge bg-danger fs-6">WA (Wrong Answer)</span>
+                    {% elif submission.verdict == 'TLE' %}
+                        <span class="badge bg-warning text-dark fs-6">TLE (Time Limit Exceeded)</span>
+                    {% elif submission.verdict == 'MLE' %}
+                        <span class="badge bg-danger fs-6">MLE (Memory Limit Exceeded)</span>
+                    {% elif submission.verdict == 'RE' %}
+                        <span class="badge bg-danger fs-6">RE (Runtime Error)</span>
+                    {% elif submission.verdict == 'CE' %}
+                        <span class="badge bg-secondary fs-6">CE (Compilation Error)</span>
+                    {% elif submission.verdict == 'OLE' %}
+                        <span class="badge bg-danger fs-6">OLE (Output Limit Exceeded)</span>
+                    {% else %}
+                        <span class="text-muted fst-italic">Pending evaluation...</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="small text-muted">Score Awarded</div>
+                <div class="mt-1">
+                    {% if submission.has_current_score %}
+                        <span class="fs-5 fw-bold text-primary">{{ submission.score.final_score }}</span>
+                        <span class="text-muted">/ {{ submission.score.max_possible_score }} pts</span>
+                        {% if submission.is_late and submission.score.late_penalty_percent > 0 %}
+                            <div class="small text-danger">
+                                <i class="bi bi-clock-history me-1"></i>Late penalty applied: -{{ submission.score.late_penalty_percent }}% (Raw: {{ submission.score.raw_score }})
+                            </div>
+                        {% endif %}
+                    {% elif submission.score %}
+                        <span class="text-muted fst-italic">Stale score; pending re-evaluation</span>
+                    {% else %}
+                        <span class="text-muted fst-italic">--</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="small text-muted">Submission Info</div>
+                <div class="small text-muted mt-1">
+                    <div><i class="bi bi-code-slash me-1"></i><strong class="font-monospace">{{ submission.language|upper }}</strong></div>
+                    <div><i class="bi bi-clock me-1"></i>{{ submission.created_at|format_pkt('%Y-%m-%d %H:%M:%S PKT') }}</div>
+                    {% if submission.max_time is not none %}
+                        <div><i class="bi bi-stopwatch me-1"></i>{{ "%.3f"|format(submission.max_time) }}s | {{ submission.max_memory_kb or 0 }} KB</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if submission.status in ['queued', 'judging'] %}
+            <div class="alert alert-info py-2 px-3 mt-3 mb-0 small d-flex align-items-center">
+                <i class="bi bi-info-circle-fill me-2 fs-6"></i>
+                <span>Your submission is currently in the evaluation queue. This page will automatically update once judging finishes.</span>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Compilation Error Display if CE -->
+{% if submission.compile_error %}
+    <div class="alert alert-danger shadow-sm border-danger mb-4">
+        <h5 class="alert-heading fw-bold"><i class="bi bi-x-octagon-fill me-2"></i>Compilation Error (CE)</h5>
+        <pre class="bg-dark text-white p-3 rounded mb-0 mt-2 font-monospace small" style="white-space: pre-wrap;">{{ submission.compile_error }}</pre>
+    </div>
+{% endif %}
+
+<!-- Test Case Results -->
+{% if submission.results %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+            <h5 class="card-title fw-bold mb-0">
+                <i class="bi bi-list-check text-primary me-2"></i>Test Case Results
+            </h5>
+            <span class="text-muted small">Total: {{ submission.results|length }} tests</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3" style="width: 80px;">Test</th>
+                            <th>Visibility</th>
+                            <th>Verdict</th>
+                            <th>Time</th>
+                            <th>Memory</th>
+                            <th>Score</th>
+                            <th class="text-end pe-3">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for result in submission.results %}
+                            {% set is_vis = not result.is_hidden %}
+                            <tr>
+                                <td class="ps-3 fw-bold">#{{ loop.index }}</td>
+                                <td>
+                                    {% if is_vis %}
+                                        <span class="badge bg-info text-dark"><i class="bi bi-eye me-1"></i>Sample</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary"><i class="bi bi-eye-slash-fill me-1"></i>Hidden</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if result.verdict == 'AC' %}
+                                        <span class="badge bg-success">AC</span>
+                                    {% elif result.verdict == 'WA' %}
+                                        <span class="badge bg-danger">WA</span>
+                                    {% elif result.verdict == 'TLE' %}
+                                        <span class="badge bg-warning text-dark">TLE</span>
+                                    {% elif result.verdict == 'MLE' %}
+                                        <span class="badge bg-danger">MLE</span>
+                                    {% elif result.verdict == 'RE' %}
+                                        <span class="badge bg-danger">RE</span>
+                                    {% elif result.verdict == 'OLE' %}
+                                        <span class="badge bg-danger">OLE</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ result.verdict }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="font-monospace small">
+                                    {{ "%.3f"|format(result.execution_time) }}s
+                                </td>
+                                <td class="font-monospace small">
+                                    {{ result.memory_used_kb }} KB
+                                </td>
+                                <td>
+                                    <strong class="text-primary">{{ result.score_awarded }}</strong> /
+                                    {% if result.test %}{{ result.test.marks }}{% else %}--{% endif %}
+                                </td>
+                                <td class="text-end pe-3">
+                                    {% if is_vis and result.test %}
+                                        <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#testDetail{{ result.id }}">
+                                            <i class="bi bi-search me-1"></i> View
+                                        </button>
+                                    {% elif is_vis %}
+                                        <span class="text-muted small">Test removed</span>
+                                    {% else %}
+                                        <span class="text-muted small fst-italic">Protected</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if is_vis and result.test %}
+                                <tr class="collapse" id="testDetail{{ result.id }}">
+                                    <td colspan="7" class="bg-light p-3">
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <div class="small fw-bold text-muted mb-1">Standard Input:</div>
+                                                <pre class="test-output-box mb-0">{{ result.test.input_data }}</pre>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="small fw-bold text-muted mb-1">Expected Output:</div>
+                                                <pre class="test-output-box mb-0">{{ result.test.expected_output }}</pre>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <div class="small fw-bold text-muted mb-1">Your Output:</div>
+                                                <pre class="test-output-box mb-0">{{ result.student_output or '(No output)' }}</pre>
+                                            </div>
+                                        </div>
+                                        {% if result.checker_diff %}
+                                            <div class="mt-3">
+                                                <div class="small fw-bold text-danger mb-1"><i class="bi bi-file-diff me-1"></i>Diff:</div>
+                                                <pre class="test-output-box mb-0 text-warning">{{ result.checker_diff }}</pre>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+<!-- Submitted Source Code Viewer -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+        <h5 class="card-title fw-bold mb-0">
+            <i class="bi bi-code-square text-primary me-2"></i>Submitted Source Code
+        </h5>
+        <span class="badge bg-secondary font-monospace">{{ submission.language|upper }}</span>
+    </div>
+    <div class="card-body p-0">
+        <textarea id="sourceCodeViewer" readonly>{{ submission.source_code }}</textarea>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='codemirror/codemirror.min.js') }}"></script>
+<script src="{{ url_for('static', filename='codemirror/clike.min.js') }}"></script>
+<script src="{{ url_for('static', filename='codemirror/python.min.js') }}"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // 1. Initialize read-only CodeMirror viewer
+    const textarea = document.getElementById('sourceCodeViewer');
+    if (textarea) {
+        const lang = "{{ submission.language }}";
+        let mode = 'text/x-c++src';
+        if (lang === 'c') mode = 'text/x-csrc';
+        else if (lang === 'python') mode = 'python';
+
+        CodeMirror.fromTextArea(textarea, {
+            lineNumbers: true,
+            mode: mode,
+            theme: 'dracula',
+            readOnly: true,
+            viewportMargin: Infinity
+        });
+    }
+
+    // 2. 2-Second Live Polling for Queued/Judging status
+    const currentStatus = "{{ submission.status }}";
+    if (currentStatus === 'queued' || currentStatus === 'judging') {
+        const statusUrl = "{{ url_for('student.submission_status', submission_id=submission.id) }}";
+        const pollInterval = setInterval(function () {
+            fetch(statusUrl)
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.is_done) {
+                        clearInterval(pollInterval);
+                        window.location.reload();
+                    } else {
+                        const statusText = document.getElementById('statusText');
+                        if (statusText && data.status) {
+                            statusText.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1) + '...';
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error('Polling error:', err);
+                });
+        }, 2000);
+    }
+});
+</script>
+{% endblock %}

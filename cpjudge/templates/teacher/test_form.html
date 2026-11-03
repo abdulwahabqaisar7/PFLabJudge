@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Test #{{ test.order_num }} - {{ problem.title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-7">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h4 class="mb-1"><i class="bi bi-pencil-square text-primary me-2"></i>Edit Test #{{ test.order_num }}</h4>
+                <div class="text-muted">{{ problem.title }} &bull; Test ID #{{ test.id }}</div>
+            </div>
+            <a href="{{ url_for('teacher.problem_tests', problem_id=problem.id) }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i> Back to Tests
+            </a>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label font-weight-bold" for="order_num">{{ form.order_num.label.text }}</label>
+                            {{ form.order_num(class="form-control" + (" is-invalid" if form.order_num.errors else "")) }}
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label font-weight-bold" for="marks">{{ form.marks.label.text }}</label>
+                            {{ form.marks(class="form-control" + (" is-invalid" if form.marks.errors else "")) }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label font-weight-bold" for="input_data">{{ form.input_data.label.text }}</label>
+                        {{ form.input_data(class="form-control font-monospace", rows=4) }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label font-weight-bold" for="expected_output">{{ form.expected_output.label.text }}</label>
+                        {{ form.expected_output(class="form-control font-monospace", rows=4) }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="subtask_id">{{ form.subtask_id.label.text }}</label>
+                        {{ form.subtask_id(class="form-control", placeholder="Optional subtask identifier") }}
+                    </div>
+
+                    <div class="mb-4 form-check">
+                        {{ form.is_hidden(class="form-check-input") }}
+                        <label class="form-check-label font-weight-bold" for="is_hidden">{{ form.is_hidden.label.text }}</label>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{{ url_for('teacher.problem_tests', problem_id=problem.id) }}" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary px-4 shadow-sm">
+                            <i class="bi bi-check-lg me-1"></i> Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

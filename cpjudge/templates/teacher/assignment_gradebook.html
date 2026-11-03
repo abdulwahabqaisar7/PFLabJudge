@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Gradebook - {{ assignment.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('teacher.classes') }}">Classes</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('teacher.class_detail', class_id=classroom.id) }}">{{ classroom.code }}</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('teacher.assignments') }}">Assignments</a></li>
+                <li class="breadcrumb-item active">{{ assignment.title }}</li>
+            </ol>
+        </nav>
+        <h3 class="mb-0">
+            <i class="bi bi-journal-check text-primary me-2"></i>Assignment Gradebook: {{ assignment.title }}
+            <span class="badge bg-dark font-monospace fs-6 ms-2">{{ classroom.code }}</span>
+        </h3>
+        <p class="text-muted small mt-1 mb-0">
+            {% if assignment.problems|length > 1 %}
+                Problems: <strong>{{ assignment.problems|length }} problems</strong> ({{ assignment.total_marks }} max marks)
+            {% else %}
+                Problem: <strong>{{ assignment.problems[0].title if assignment.problems else (assignment.problem.title if assignment.problem else 'N/A') }}</strong> ({{ assignment.total_marks }} max marks)
+            {% endif %}
+            &bull; Due: {{ assignment.due_date|format_pkt('%Y-%m-%d %H:%M PKT') if assignment.due_date else 'No deadline' }}
+        </p>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <a href="{{ url_for('teacher.assignment_gradebook_csv', assignment_id=assignment.id) }}" class="btn btn-outline-success shadow-sm">
+            <i class="bi bi-download me-1"></i> Export CSV
+        </a>
+        <form action="{{ url_for('teacher.rejudge_assignment', assignment_id=assignment.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Rejudge all submissions for assignment \'{{ assignment.title }}\'? All scores will be recomputed.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-warning shadow-sm" title="Rejudge All Submissions">
+                <i class="bi bi-arrow-repeat me-1"></i> Rejudge All
+            </button>
+        </form>
+        <a href="{{ url_for('teacher.submissions', assignment_id=assignment.id) }}" class="btn btn-outline-info shadow-sm">
+            <i class="bi bi-card-list me-1"></i> Submissions
+        </a>
+        <a href="{{ url_for('teacher.class_gradebook', class_id=classroom.id) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i> Class Gradebook
+        </a>
+    </div>
+</div>
+
+<!-- Assignment Metrics Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="text-muted small text-uppercase fw-bold">Total Enrolled</div>
+            <div class="fs-3 fw-bold text-dark mt-1">{{ total_enrolled }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="text-muted small text-uppercase fw-bold">Submitted / Rate</div>
+            <div class="fs-3 fw-bold text-primary mt-1">
+                {{ total_submitted }}
+                <span class="fs-6 text-muted font-normal">({{ ((total_submitted / total_enrolled) * 100)|round(1) if total_enrolled > 0 else 0 }}%)</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="text-muted small text-uppercase fw-bold">Accepted (AC)</div>
+            <div class="fs-3 fw-bold text-success mt-1">{{ total_ac }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="text-muted small text-uppercase fw-bold">Average Score</div>
+            <div class="fs-3 fw-bold text-info mt-1">{{ avg_score }} <span class="fs-6 text-muted">/ {{ assignment.total_marks }}</span></div>
+        </div>
+    </div>
+</div>
+
+<!-- Student Submissions & Scores Table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">
+            <i class="bi bi-people me-2 text-primary"></i>Student Performance Roster
+        </h5>
+        <span class="text-muted small">Max Marks: <strong>{{ assignment.total_marks }}</strong></span>
+    </div>
+    <div class="card-body p-0">
+        {% if student_rows %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 50px;">#</th>
+                            <th>Roll No</th>
+                            <th>Student Name</th>
+                            <th>Username</th>
+                            <th class="text-center">Attempts</th>
+                            <th class="text-center">Best Raw</th>
+                            <th class="text-center">Late Penalty</th>
+                            <th class="text-center">Final Score</th>
+                            <th class="text-center">Best Verdict</th>
+                            <th>Last Submitted (PKT)</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in student_rows %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td><code>{{ row.user.roll_no or 'N/A' }}</code></td>
+                                <td class="fw-bold">{{ row.user.name }}</td>
+                                <td><code>{{ row.user.username }}</code></td>
+                                <td class="text-center">
+                                    {% if row.attempts > 0 %}
+                                        <span class="badge bg-light text-dark border">{{ row.attempts }}</span>
+                                    {% else %}
+                                        <span class="text-muted">0</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if row.best_score %}
+                                        {{ row.best_score.raw_score }}
+                                    {% else %}
+                                        <span class="text-muted">&mdash;</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if row.best_score and row.best_score.late_penalty_percent > 0 %}
+                                        <span class="badge bg-warning text-dark">-{{ row.best_score.late_penalty_percent|int if (row.best_score.late_penalty_percent % 1 == 0) else row.best_score.late_penalty_percent }}%</span>
+                                    {% elif row.best_score %}
+                                        <span class="text-muted">None</span>
+                                    {% else %}
+                                        <span class="text-muted">&mdash;</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if row.best_score %}
+                                        {% if row.best_score.final_score >= assignment.total_marks %}
+                                            <span class="badge bg-success fs-6">{{ row.best_score.final_score }}</span>
+                                        {% elif row.best_score.final_score > 0 %}
+                                            <span class="badge bg-warning text-dark fs-6">{{ row.best_score.final_score }}</span>
+                                        {% else %}
+                                            <span class="badge bg-danger fs-6">{{ row.best_score.final_score }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">0.0</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if row.best_submission %}
+                                        {% if row.best_submission.verdict == 'AC' %}
+                                            <span class="badge bg-success">AC</span>
+                                        {% elif row.best_submission.verdict == 'WA' %}
+                                            <span class="badge bg-danger">WA</span>
+                                        {% elif row.best_submission.verdict == 'TLE' %}
+                                            <span class="badge bg-warning text-dark">TLE</span>
+                                        {% elif row.best_submission.verdict == 'MLE' %}
+                                            <span class="badge bg-warning text-dark">MLE</span>
+                                        {% elif row.best_submission.verdict == 'CE' %}
+                                            <span class="badge bg-secondary">CE</span>
+                                        {% elif row.best_submission.verdict == 'RE' %}
+                                            <span class="badge bg-danger">RE</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ row.best_submission.verdict or 'N/A' }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge bg-light text-muted border">Unsubmitted</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small text-muted">
+                                    {{ row.latest_submission.created_at|format_pkt('%Y-%m-%d %H:%M:%S') if row.latest_submission and row.latest_submission.created_at else 'N/A' }}
+                                </td>
+                                <td class="text-end">
+                                    {% if row.best_submission %}
+                                        <a href="{{ url_for('teacher.submission_detail', submission_id=row.best_submission.id) }}" class="btn btn-sm btn-outline-primary" title="View Best Submission">
+                                            <i class="bi bi-eye"></i> View Best
+                                        </a>
+                                    {% else %}
+                                        <button class="btn btn-sm btn-outline-secondary" disabled>No Submissions</button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="p-5 text-center text-muted">
+                <i class="bi bi-people fs-1 d-block mb-3 text-secondary"></i>
+                <h5>No Enrolled Students</h5>
+                <p>No students enrolled in class {{ classroom.code }}. Import students to view their gradebook.</p>
+                <a href="{{ url_for('teacher.class_detail', class_id=classroom.id) }}" class="btn btn-outline-primary mt-2">Go to Class Details</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

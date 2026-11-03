@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}Test Cases - {{ problem.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{{ url_for('teacher.problems') }}">Problems</a></li>
+                <li class="breadcrumb-item active">{{ problem.title }}</li>
+            </ol>
+        </nav>
+        <h3 class="mb-0">
+            <i class="bi bi-list-check text-primary me-2"></i>Test Cases
+            <span class="badge bg-info text-dark fs-6 ms-2">v{{ problem.tests_version }}</span>
+        </h3>
+    </div>
+    <div class="d-flex gap-2">
+        <form action="{{ url_for('teacher.rejudge_problem', problem_id=problem.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Rejudge all submissions for this problem?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-warning">
+                <i class="bi bi-arrow-repeat me-1"></i> Rejudge All Submissions
+            </button>
+        </form>
+        <a href="{{ url_for('teacher.problem_edit', problem_id=problem.id) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-pencil me-1"></i> Edit Problem
+        </a>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <!-- Existing Test Cases Table -->
+    <div class="col-12 col-xl-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 font-weight-bold">
+                    Existing Tests ({{ problem.tests|length }})
+                    <span class="badge bg-secondary ms-2">{{ problem.total_marks }} Total Marks</span>
+                </h5>
+                <span class="small text-muted">
+                    <span class="badge bg-success">{{ problem.visible_tests|length }} Visible</span>
+                    <span class="badge bg-dark ms-1">{{ problem.hidden_tests|length }} Hidden</span>
+                </span>
+            </div>
+            <div class="card-body p-0">
+                {% if problem.tests %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Visibility</th>
+                                    <th>Marks</th>
+                                    <th>Subtask</th>
+                                    <th>Input Sample</th>
+                                    <th>Expected Output</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for t in problem.tests %}
+                                    <tr>
+                                        <td><strong>{{ t.order_num }}</strong></td>
+                                        <td>
+                                            {% if t.is_hidden %}
+                                                <span class="badge bg-dark"><i class="bi bi-eye-slash-fill me-1"></i>Hidden</span>
+                                            {% else %}
+                                                <span class="badge bg-success"><i class="bi bi-eye-fill me-1"></i>Visible</span>
+                                            {% endif %}
+                                        </td>
+                                        <td><strong>{{ t.marks }}</strong></td>
+                                        <td>
+                                            {% if t.subtask_id %}
+                                                <span class="badge bg-light text-dark border">{{ t.subtask_id }}</span>
+                                            {% else %}
+                                                <span class="text-muted">&mdash;</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <code class="d-inline-block text-truncate" style="max-width: 150px;">
+                                                {{ t.input_data[:50] }}
+                                            </code>
+                                        </td>
+                                        <td>
+                                            <code class="d-inline-block text-truncate" style="max-width: 150px;">
+                                                {{ t.expected_output[:50] }}
+                                            </code>
+                                        </td>
+                                        <td class="text-end">
+                                            <div class="btn-group btn-group-sm">
+                                                <a href="{{ url_for('teacher.test_edit', problem_id=problem.id, test_id=t.id) }}" class="btn btn-outline-secondary">
+                                                    <i class="bi bi-pencil"></i>
+                                                </a>
+                                                <form action="{{ url_for('teacher.test_delete', problem_id=problem.id, test_id=t.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Delete Test #{{ t.order_num }}?');">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                    <button type="submit" class="btn btn-outline-danger">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="p-5 text-center text-muted">
+                        <i class="bi bi-file-earmark-code fs-1 d-block mb-2"></i>
+                        No test cases defined yet. Add tests individually or upload a ZIP archive below.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ZIP Upload and Add Test Column -->
+    <div class="col-12 col-xl-4">
+        <!-- ZIP Upload Card -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-dark text-white py-3">
+                <h6 class="mb-0 font-weight-bold"><i class="bi bi-file-earmark-zip me-2 text-warning"></i>Bulk Upload via ZIP</h6>
+            </div>
+            <div class="card-body p-3">
+                <p class="small text-muted mb-3">
+                    Upload a <code>.zip</code> containing test pairs (e.g. <code>1.in</code> and <code>1.ans</code> or <code>1.out</code>).
+                </p>
+                <form method="POST" action="{{ url_for('teacher.tests_upload_zip', problem_id=problem.id) }}" enctype="multipart/form-data">
+                    {{ zip_form.hidden_tag() }}
+
+                    <div class="mb-3">
+                        <label class="form-label small font-weight-bold" for="zip_file">{{ zip_form.zip_file.label.text }}</label>
+                        {{ zip_form.zip_file(class="form-control form-control-sm") }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small" for="default_marks">{{ zip_form.default_marks.label.text }}</label>
+                        {{ zip_form.default_marks(class="form-control form-control-sm") }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small" for="visibility_mode">{{ zip_form.visibility_mode.label.text }}</label>
+                        {{ zip_form.visibility_mode(class="form-select form-select-sm") }}
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        {{ zip_form.overwrite(class="form-check-input") }}
+                        <label class="form-check-label small text-muted" for="overwrite">{{ zip_form.overwrite.label.text }}</label>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-warning btn-sm shadow-sm text-dark font-weight-bold">
+                            <i class="bi bi-upload me-1"></i> Extract & Import Tests
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Add Single Test Case Card -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 font-weight-bold"><i class="bi bi-plus-circle me-2 text-primary"></i>Add Single Test Case</h6>
+            </div>
+            <div class="card-body p-3">
+                <form method="POST" action="{{ url_for('teacher.problem_tests', problem_id=problem.id) }}">
+                    {{ add_form.hidden_tag() }}
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small font-weight-bold" for="order_num">{{ add_form.order_num.label.text }}</label>
+                            {{ add_form.order_num(class="form-control form-control-sm", value=problem.tests|length + 1) }}
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small font-weight-bold" for="marks">{{ add_form.marks.label.text }}</label>
+                            {{ add_form.marks(class="form-control form-control-sm") }}
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label small font-weight-bold" for="input_data">{{ add_form.input_data.label.text }}</label>
+                        {{ add_form.input_data(class="form-control form-control-sm font-monospace", rows=3, placeholder="Standard input sent to stdin") }}
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label small font-weight-bold" for="expected_output">{{ add_form.expected_output.label.text }}</label>
+                        {{ add_form.expected_output(class="form-control form-control-sm font-monospace", rows=3, placeholder="Expected stdout") }}
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label small" for="subtask_id">{{ add_form.subtask_id.label.text }}</label>
+                        {{ add_form.subtask_id(class="form-control form-control-sm", placeholder="e.g. subtask1") }}
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        {{ add_form.is_hidden(class="form-check-input") }}
+                        <label class="form-check-label small" for="is_hidden">{{ add_form.is_hidden.label.text }}</label>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-sm shadow-sm">
+                            <i class="bi bi-plus-lg me-1"></i> Add Test Case
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
