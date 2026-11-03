@@ -1,5 +1,6 @@
 services:
   web:
+    image: cpjudge:local
     build:
       context: .
       dockerfile: Dockerfile
@@ -12,31 +13,31 @@ services:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in a .env file}
       - DATABASE_URL=${DATABASE_URL:-}
+      - SANDBOX_BACKEND=${SANDBOX_BACKEND:-docker}
+      - SANDBOX_IMAGE=${SANDBOX_IMAGE:-cpjudge:local}
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Karachi
       - APP_TIMEZONE=Asia/Karachi
     restart: unless-stopped
 
   worker:
+    image: cpjudge:local
     build:
       context: .
       dockerfile: Dockerfile
     command: python -m cpjudge.worker
     volumes:
       - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - FLASK_ENV=worker
       - DATABASE_URL=${DATABASE_URL:-}
-      - USE_BWRAP=${USE_BWRAP:-true}
+      - SANDBOX_BACKEND=${SANDBOX_BACKEND:-docker}
+      - SANDBOX_IMAGE=${SANDBOX_IMAGE:-cpjudge:local}
       - SANDBOX_USER=${SANDBOX_USER:-judge_sandbox}
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Karachi
       - APP_TIMEZONE=Asia/Karachi
-    # Required for Linux bubblewrap & setrlimit sandbox capabilities
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
     depends_on:
       - web
     restart: unless-stopped

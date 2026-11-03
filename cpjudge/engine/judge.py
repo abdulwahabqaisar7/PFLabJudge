@@ -45,6 +45,8 @@ class JudgeConfig:
     late_penalty_percent: float = 0.0
     use_bwrap: bool = True
     sandbox_user: Optional[str] = "judge_sandbox"
+    sandbox_backend: Optional[str] = None
+    docker_image: str = "cpjudge:local"
 
 
 @dataclass
@@ -101,11 +103,15 @@ def judge_submission(
         compile_timeout=config.compile_timeout,
         use_bwrap=config.use_bwrap,
         sandbox_user=config.sandbox_user,
+        sandbox_backend=config.sandbox_backend,
+        docker_image=config.docker_image,
     )
     runner = Runner(
         time_multipliers=config.time_multipliers,
         use_bwrap=config.use_bwrap,
         sandbox_user=config.sandbox_user,
+        sandbox_backend=config.sandbox_backend,
+        docker_image=config.docker_image,
     )
     checker = Checker(
         checker_type=config.checker_type,
@@ -113,6 +119,8 @@ def judge_submission(
         custom_checker_path=config.custom_checker_path,
         use_bwrap=config.use_bwrap,
         sandbox_user=config.sandbox_user,
+        sandbox_backend=config.sandbox_backend,
+        docker_image=config.docker_image,
     )
 
     # 1. Compilation Phase
@@ -298,6 +306,8 @@ def judge(submission_id: int) -> SubmissionResult:
     try:
         use_bwrap = current_app.config.get("USE_BWRAP", True) if has_app_context() else True
         sandbox_user = current_app.config.get("SANDBOX_USER", "judge_sandbox") if has_app_context() else "judge_sandbox"
+        sandbox_backend = current_app.config.get("SANDBOX_BACKEND", "bwrap") if has_app_context() else None
+        docker_image = current_app.config.get("SANDBOX_IMAGE", "cpjudge:local") if has_app_context() else "cpjudge:local"
         config = JudgeConfig(
             time_limit=problem.time_limit,
             memory_limit_mb=problem.memory_limit,
@@ -309,6 +319,8 @@ def judge(submission_id: int) -> SubmissionResult:
             late_penalty_percent=late_penalty,
             use_bwrap=use_bwrap,
             sandbox_user=sandbox_user,
+            sandbox_backend=sandbox_backend,
+            docker_image=docker_image,
         )
 
         sub_result = judge_submission(

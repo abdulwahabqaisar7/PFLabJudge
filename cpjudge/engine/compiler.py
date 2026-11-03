@@ -20,6 +20,7 @@ from cpjudge.engine.sandbox import (
     create_preexec_fn,
     is_bwrap_available,
 )
+from cpjudge.engine.docker_sandbox import DockerSandbox
 from cpjudge.engine.verdicts import Verdict
 
 
@@ -39,11 +40,17 @@ class Compiler:
         compile_timeout: float = 10.0,
         use_bwrap: bool = False,
         sandbox_user: Optional[str] = "judge_sandbox",
+        sandbox_backend: Optional[str] = None,
+        docker_image: str = "cpjudge:local",
     ):
         self.compile_timeout = compile_timeout
-        self.use_bwrap = use_bwrap
+        self.sandbox_backend = sandbox_backend or ("bwrap" if use_bwrap else "process")
+        if self.sandbox_backend not in ("process", "bwrap", "docker"):
+            raise ValueError(f"Unknown sandbox backend: {self.sandbox_backend}")
+        self.use_bwrap = self.sandbox_backend == "bwrap"
         self.sandbox_user = sandbox_user
-        if use_bwrap and not is_bwrap_available(sandbox_user):
+        self.docker_image = docker_image
+        if self.use_bwrap and not is_bwrap_available(sandbox_user):
             raise RuntimeError("Bubblewrap is required for sandboxed compilation but is unavailable.")
 
     def compile(
@@ -135,6 +142,42 @@ class Compiler:
     def _run_compiler_cmd(self, cmd: List[str], bin_path: Path) -> CompileResult:
         start_time = time.perf_counter()
         work_dir = bin_path.parent.resolve()
+        if self.sandbox_backend == "docker":
+            result = DockerSandbox(self.docker_image).run(
+                command=cmd,
+                work_dir=work_dir,
+                timeout=self.compile_timeout,
+                cpu_limit_seconds=self.compile_timeout,
+                memory_limit_bytes=1024 * 1024 * 1024,
+                output_limit_bytes=64 * 1024 * 1024,
+                nproc_limit=32,
+                collect_files=[bin_path.name],
+            )
+            elapsed = time.perf_counter() - start_time
+            binary = result.artifacts.get(bin_path.name)
+            if result.exit_code == 0 and binary is not None:
+                bin_path.write_bytes(binary)
+                return CompileResult(
+                    success=True,
+                    run_cmd=[str(bin_path)],
+                    executable_path=str(bin_path),
+                    compile_time=elapsed,
+                )
+            error = result.stderr.strip() or result.stdout.strip()
+            if result.timed_out:
+                error = f"Compilation timed out after {self.compile_timeout:.1f}s"
+            elif result.output_limit_exceeded:
+                error = "Compiler output exceeded the configured limit."
+            elif not error:
+                error = f"Compiler failed with exit code {result.exit_code}"
+            return CompileResult(
+                success=False,
+                run_cmd=[],
+                error_message=error,
+                verdict=Verdict.CE,
+                compile_time=elapsed,
+            )
+
         if self.use_bwrap:
             cmd = build_bwrap_args(cmd, work_dir, sandbox_user=self.sandbox_user)
         preexec = create_preexec_fn(
@@ -206,6 +249,33 @@ class Compiler:
             pass
 
         start_time = time.perf_counter()
+        if self.sandbox_backend == "docker":
+            result = DockerSandbox(self.docker_image).run(
+                command=[sys.executable, "-m", "py_compile", str(src_path)],
+                work_dir=work_dir,
+                timeout=self.compile_timeout,
+                cpu_limit_seconds=self.compile_timeout,
+                memory_limit_bytes=256 * 1024 * 1024,
+                output_limit_bytes=1024 * 1024,
+                nproc_limit=16,
+            )
+            elapsed = time.perf_counter() - start_time
+            if result.exit_code == 0:
+                return CompileResult(
+                    success=True,
+                    run_cmd=[sys.executable, str(src_path)],
+                    executable_path=str(src_path),
+                    compile_time=elapsed,
+                )
+            error = result.stderr.strip() or result.stdout.strip()
+            return CompileResult(
+                success=False,
+                run_cmd=[],
+                error_message=error or f"Python syntax check failed with exit code {result.exit_code}",
+                verdict=Verdict.CE,
+                compile_time=elapsed,
+            )
+
         try:
             # First, compile() in Python to check syntax and get clean error
             compile(source_code, str(src_path), "exec")

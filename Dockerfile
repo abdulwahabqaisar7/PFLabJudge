@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     TZ=Asia/Karachi
 
-# Install compilers, bubblewrap, procps, and utilities
+# Install compilers and the utilities used inside disposable execution containers.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bubblewrap \
     procps \
     libcap2-bin \
+    util-linux \
+    time \
     curl \
     ca-certificates \
     tzdata \

@@ -329,6 +329,8 @@ def test_judge_uses_configured_sandbox_settings(app, student, env_setup, monkeyp
 
     app.config["USE_BWRAP"] = False
     app.config["SANDBOX_USER"] = "custom_sandbox"
+    app.config["SANDBOX_BACKEND"] = "docker"
+    app.config["SANDBOX_IMAGE"] = "cpjudge:test"
     captured_configs = []
 
     def fake_judge_submission(source_code, language, test_cases, config):
@@ -348,7 +350,30 @@ def test_judge_uses_configured_sandbox_settings(app, student, env_setup, monkeyp
     assert len(captured_configs) == 1
     assert captured_configs[0].use_bwrap is False
     assert captured_configs[0].sandbox_user == "custom_sandbox"
+    assert captured_configs[0].sandbox_backend == "docker"
+    assert captured_configs[0].docker_image == "cpjudge:test"
     assert db.session.get(Submission, submission.id).status == "done"
+
+
+def test_worker_validates_docker_backend_at_startup(app, monkeypatch):
+    app.config.update(
+        TESTING=False,
+        SANDBOX_BACKEND="docker",
+        SANDBOX_IMAGE="cpjudge:test",
+    )
+    validated_images = []
+    monkeypatch.setattr(
+        "cpjudge.worker.DockerSandbox.validate",
+        lambda sandbox: validated_images.append(sandbox.image),
+    )
+    monkeypatch.setattr(
+        "cpjudge.worker.is_bwrap_available",
+        lambda *_args, **_kwargs: pytest.fail("Docker backend must not require Bubblewrap"),
+    )
+
+    JudgeWorker(app=app)
+
+    assert validated_images == ["cpjudge:test"]
 
 
 def test_judge_keeps_score_stale_if_tests_change_during_evaluation(app, student, env_setup, monkeypatch):

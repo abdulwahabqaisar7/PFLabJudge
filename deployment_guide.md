@@ -54,7 +54,7 @@ CPJudge is designed specifically for academic labs where internet access may be 
        |                           |
   [ Web Process ]           [ Worker Daemon ]
   - Flask App               - Isolated Sandbox
-  - Port 5050               - Bubblewrap (bwrap)
+  - Port 5050                 - Docker-backed disposable sandboxes
   - SQLite/PostgreSQL       - G++ / GCC / Python 3
   - Pakistan Time (PKT)     - Submissions Queue
 ```
@@ -62,7 +62,7 @@ CPJudge is designed specifically for academic labs where internet access may be 
 ### Key Principles for Lab Deployment
 - **Zero Internet Requirement:** All CSS (Bootstrap 5), Icons (Bootstrap Icons fonts), and JavaScript editor libraries (CodeMirror 5) are stored locally on the server. No CDN or external URL is ever requested.
 - **Client Zero-Install:** Student computers require **no software installation** (no Python, no compilers, no judge client). Any web browser (Chrome, Firefox, Edge) works out of the box.
-- **Sandboxed Security:** Student code compiles and executes inside isolated Linux sandboxes on the host server. A student cannot fork-bomb, consume excessive RAM, read system files, or access the local network.
+- **Sandboxed Security:** Student code compiles and executes in disposable Linux containers with no network, a read-only root filesystem, a non-root identity, and resource limits. The Docker socket is available only to the trusted worker, never to the web or student containers.
 - **Pakistan Standard Time (PKT, UTC+5):** All deadlines, timers, submission timestamps, and gradebook exports are synchronized to Pakistan Standard Time.
 
 ---
@@ -74,11 +74,11 @@ This can be the instructor's PC in the lab, a designated lab server, or a laptop
 
 | Component | Minimum Specification | Recommended Specification (for 40-60 students) |
 | :--- | :--- | :--- |
-| **Operating System** | Windows 10/11 (64-bit) with WSL2 **OR** Ubuntu 20.04/22.04/24.04 LTS | Ubuntu 22.04 LTS or Windows 11 Pro with Docker Desktop |
+| **Operating System** | Windows 10/11 (64-bit) with Docker Desktop Linux containers **OR** Ubuntu 20.04/22.04/24.04 LTS | Ubuntu 22.04 LTS or Windows 11 Pro with Docker Desktop |
 | **CPU** | Quad-core CPU (Intel i5/AMD Ryzen 5) | 6+ Cores (Intel i7/AMD Ryzen 7 or Server Xeon) |
 | **RAM** | 8 GB RAM | 16 GB RAM |
 | **Disk Space** | 10 GB free space | 20 GB free space (SSD recommended for fast compilation) |
-| **Software** | Docker Engine & Docker Compose | Docker Engine & Docker Compose |
+| **Software** | Docker Desktop (Windows) or Docker Engine + Compose plugin (Linux) | Docker Desktop (Windows) or Docker Engine + Compose plugin (Linux) |
 
 ### Student Lab PCs (30 to 60+ Machines)
 - Any operating system: Windows 7/10/11, Ubuntu, Linux Mint, macOS.
@@ -94,8 +94,9 @@ This can be the instructor's PC in the lab, a designated lab server, or a laptop
 If your lab instructor machine runs Windows 10 or Windows 11:
 
 1. **Install Docker Desktop for Windows:**
-   - Ensure **WSL 2 backend** is enabled during Docker Desktop installation.
-   - Start Docker Desktop and verify the whale icon appears in the system tray.
+   - Enable the **WSL 2 backend** and use **Linux containers**.
+   - Start Docker Desktop and wait until its engine is running.
+   - No separate host installation of Python, GCC/G++, Linux, or Bubblewrap is required; Compose builds the sandbox image.
 
 2. **Download / Copy CPJudge Repository:**
    - Copy the project folder (e.g. `LabJudge`) to your host machine:
@@ -116,7 +117,7 @@ If your lab instructor machine runs Windows 10 or Windows 11:
      ```powershell
      docker compose up --build -d
      ```
-   - Docker will build the web application and judge worker images and start both containers in the background.
+   - Docker will build the application/sandbox image and start the web application and worker. The worker creates a new restricted sandbox container for each compile and run.
 
 5. **Verify Container Status:**
    ```powershell
@@ -125,6 +126,7 @@ If your lab instructor machine runs Windows 10 or Windows 11:
    You should see:
    - `labjudge-web-1` (running on port `0.0.0.0:5050->5000/tcp`)
    - `labjudge-worker-1` (running judge evaluation daemon)
+   - The worker must start successfully with the Docker socket mounted. If it reports a missing daemon or image, check that Docker Desktop is running in Linux-container mode.
 
 6. **Test in Browser on the Host:**
    - Open `http://localhost:5050` in Chrome/Edge on the host computer. You should see the CPJudge login portal.

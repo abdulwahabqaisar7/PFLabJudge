@@ -39,6 +39,8 @@ class Config:
     WTF_CSRF_TIME_LIMIT = 3600
 
     # Sandboxing settings
+    SANDBOX_BACKEND = os.environ.get("SANDBOX_BACKEND", "bwrap").strip().lower()
+    SANDBOX_IMAGE = os.environ.get("SANDBOX_IMAGE", "cpjudge:local")
     USE_BWRAP = os.environ.get("USE_BWRAP", "true").lower() in ("true", "1", "yes")
     SANDBOX_USER = os.environ.get("SANDBOX_USER", "judge_sandbox")
 
@@ -56,6 +58,7 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     WTF_CSRF_ENABLED = False
     RATELIMIT_ENABLED = False
+    SANDBOX_BACKEND = "process"
 
 
 class ProductionConfig(Config):

@@ -24,6 +24,7 @@ from cpjudge.engine.sandbox import (
     create_preexec_fn,
     is_bwrap_available,
 )
+from cpjudge.engine.docker_sandbox import DockerSandbox
 from cpjudge.engine.verdicts import Verdict
 
 logger = logging.getLogger(__name__)
@@ -55,12 +56,18 @@ class Runner:
         time_multipliers: Optional[Dict[str, float]] = None,
         use_bwrap: bool = True,
         sandbox_user: Optional[str] = "judge_sandbox",
+        sandbox_backend: Optional[str] = None,
+        docker_image: str = "cpjudge:local",
     ):
         self.time_multipliers = {**self.DEFAULT_MULTIPLIERS, **(time_multipliers or {})}
         self.sandbox_user = sandbox_user
-        if use_bwrap and not is_bwrap_available(sandbox_user):
+        self.sandbox_backend = sandbox_backend or ("bwrap" if use_bwrap else "process")
+        if self.sandbox_backend not in ("process", "bwrap", "docker"):
+            raise ValueError(f"Unknown sandbox backend: {self.sandbox_backend}")
+        self.use_bwrap = self.sandbox_backend == "bwrap"
+        self.docker_image = docker_image
+        if self.use_bwrap and not is_bwrap_available(sandbox_user):
             raise RuntimeError("Bubblewrap is required for sandboxed execution but is unavailable.")
-        self.use_bwrap = use_bwrap
 
     def run_test(
         self,
@@ -124,6 +131,55 @@ class Runner:
                 shutil.copy2(run_cmd[1], dest_script)
                 os.chmod(str(dest_script), 0o755)
                 final_cmd = [run_cmd[0], str(dest_script)] + run_cmd[2:]
+
+        if self.sandbox_backend == "docker":
+            try:
+                result = DockerSandbox(self.docker_image).run(
+                    command=final_cmd,
+                    work_dir=temp_dir,
+                    stdin=test_input,
+                    timeout=wall_timeout,
+                    cpu_limit_seconds=cpu_time_limit,
+                    memory_limit_bytes=memory_limit_bytes,
+                    output_limit_bytes=output_limit_bytes,
+                    nproc_limit=nproc_limit,
+                )
+            finally:
+                shutil.rmtree(temp_dir)
+
+            cpu_time = result.cpu_time
+            verdict, error_msg, truncated = self._determine_verdict(
+                exit_code=result.exit_code,
+                timed_out=result.timed_out,
+                cpu_time=cpu_time,
+                cpu_time_limit=cpu_time_limit,
+                memory_kb=result.memory_kb,
+                memory_limit_mb=memory_limit_mb,
+                output_len=(
+                    output_limit_bytes + 1
+                    if result.output_limit_exceeded
+                    else len(result.stdout.encode("utf-8"))
+                ),
+                output_limit_bytes=output_limit_bytes,
+                stderr_text=result.stderr,
+                cpu_limit_exceeded=(
+                    result.cpu_limit_exceeded or cpu_time >= cpu_time_limit
+                ),
+            )
+            if result.out_of_memory:
+                verdict = Verdict.MLE
+                error_msg = "Memory limit exceeded (container was terminated by the memory limit)."
+            return RunResult(
+                verdict=verdict,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                cpu_time=round(cpu_time, 4),
+                wall_time=round(result.wall_time, 4),
+                memory_kb=result.memory_kb,
+                exit_code=result.exit_code,
+                output_truncated=truncated,
+                error_message=error_msg,
+            )
 
         if self.use_bwrap:
             final_cmd = build_bwrap_args(final_cmd, temp_dir, sandbox_user=self.sandbox_user)

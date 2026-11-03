@@ -38,8 +38,13 @@ def create_app(config_name: str | None = None) -> Flask:
         if not secret_key:
             raise RuntimeError("SECRET_KEY must be configured when FLASK_ENV=production.")
         app.config["SECRET_KEY"] = secret_key
-        if not app.config.get("USE_BWRAP"):
-            raise RuntimeError("USE_BWRAP must remain enabled in production.")
+        sandbox_backend = app.config.get("SANDBOX_BACKEND", "bwrap")
+        if sandbox_backend not in ("bwrap", "docker"):
+            raise RuntimeError(
+                "Production requires SANDBOX_BACKEND=bwrap or SANDBOX_BACKEND=docker."
+            )
+        if sandbox_backend == "bwrap" and not app.config.get("USE_BWRAP"):
+            raise RuntimeError("USE_BWRAP must remain enabled when SANDBOX_BACKEND=bwrap.")
 
     # Initialize extensions
     db.init_app(app)

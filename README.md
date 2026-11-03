@@ -18,9 +18,9 @@ A production-grade, offline-first programming judge web application built with *
   - Gradebooks and CSV exports automatically compute total possible marks and student earned scores as the sum across all problems in that assignment.
 - **Robust Sandboxed Execution Engine:**
   - Isolated Linux worker daemon atomically claims FIFO work and renews five-minute leases for crash recovery.
-  - Hardened sandboxing using Linux **bubblewrap (`bwrap`)**: no network access (`--unshare-net`), read-only filesystem mounts (`--ro-bind`), ephemeral tmpfs `/tmp`, non-root execution, process table isolation, and dropped Linux capabilities.
-  - Resource limits: `RLIMIT_CPU` (with monitored fractional CPU limits), `RLIMIT_AS` (virtual address space limit), `RLIMIT_NPROC` (process-count defense), and `RLIMIT_FSIZE` (output size defense).
-  - Compiler, checker, and student processes receive restricted environments and resource limits; production refuses to run when Bubblewrap is unavailable.
+  - Default Compose sandbox starts a fresh Linux container for each compile, student run, and custom checker. Containers have no network, a read-only root filesystem, a non-root user, no Linux capabilities, and bounded memory, process count, temporary storage, CPU, and output.
+  - Only the trusted worker receives Docker Engine access; the web and submission containers do not. Missing Docker access or the required image stops the worker instead of running code unsandboxed.
+  - Bubblewrap remains available for a native Linux deployment; Docker Desktop on Windows uses the Docker sandbox and does not require Bubblewrap user namespaces.
 - **Flexible Scoring & Checkers:**
   - Checkers: `exact`, `token` (whitespace/newline agnostic), `float` (configurable tolerance e.g. `1e-6`), and `custom` (Python checker script).
   - Scoring modes: `per_test` (proportional marks), `all_or_nothing` (all tests must pass for credit), and `grouped` (each subtask group earns marks only when every test in that group passes; prerequisite dependencies are not configured).
@@ -72,8 +72,8 @@ A production-grade, offline-first programming judge web application built with *
              +-------------------------------------+
              |     Sandboxed Execution Engine      |
              |-------------------------------------|
-             | - bubblewrap (bwrap, no net)        |
-             | - setrlimit (CPU, RAM, PROC, FSIZE) |
+             | - disposable Docker containers     |
+             | - no network, non-root, limits      |
              | - G++ / GCC / Python 3              |
              | - Exact / Token / Float / Custom    |
              +-------------------------------------+
@@ -85,18 +85,19 @@ A production-grade, offline-first programming judge web application built with *
 ```
 
 > [!IMPORTANT]
-> **Process Separation & Security Guarantee:** Student code is **never** executed inside the web application process. All compilations and executions occur exclusively within the isolated judge worker process wrapped inside Bubblewrap sandboxes.
+> **Process Separation & Security Boundary:** Student code is never executed in the web application. In the default Compose deployment, the trusted worker asks Docker Engine to run compilation, student programs, and custom checkers in disposable, restricted Linux containers. The Docker socket is mounted only into the worker; access to it is highly privileged, so keep the worker image and server under administrator control.
 
 ---
 
 ## Install and Run from a Fresh Clone
 
-Docker Compose is the recommended way to run CPJudge. It starts the web application and the separate judge worker, and includes the Linux compilers and Bubblewrap needed to evaluate student programs. The commands below work in PowerShell on Windows, or in a terminal on Linux/macOS unless noted otherwise.
+Docker Compose is the recommended way to run CPJudge. It starts the web application and separate worker, and builds the Linux sandbox image used for every compilation and execution. Windows servers need Docker Desktop with its Linux container engine; no separate Python, compiler, Linux server, or Bubblewrap installation is needed on the Windows host. The commands below work in PowerShell on Windows, or in a terminal on Linux/macOS unless noted otherwise.
 
 ### 1. Install prerequisites
 
-- Install **Git**.
-- Install and start **Docker Desktop** on Windows (with its WSL 2 backend enabled), or install **Docker Engine and the Docker Compose plugin** on Linux.
+- On Windows, install and start **Docker Desktop** with its WSL 2 backend and Linux containers enabled. Docker Desktop is the only server-side runtime installation required; CPJudge supplies the app, compilers, Python runtime, and sandbox inside its images.
+- **Git is optional:** use it to clone the repository, or download the repository ZIP from GitHub and extract it.
+- On Linux, install **Docker Engine and the Docker Compose plugin**.
 - Confirm Docker is running:
 
 ```text
@@ -104,11 +105,11 @@ docker --version
 docker compose version
 ```
 
-For Windows, use Docker Desktop with Linux containers. Do not run student submissions directly on a Windows Python installation; the judge's sandbox and compilers are provided by the Linux container.
+For Windows, use Docker Desktop's Linux container engine. The judge worker creates isolated sibling containers through Docker Desktop; student submissions are not run on the Windows host. The worker's Docker socket access is required and must not be given to the web or test containers.
 
 ### 2. Clone the repository and enter its folder
 
-On the repository's GitHub page, click **Code**, copy its HTTPS clone URL, then run:
+On the repository's GitHub page, click **Code**, copy its HTTPS clone URL, then run the following if Git is installed:
 
 ```text
 git clone https://github.com/OWNER/REPOSITORY.git
@@ -116,6 +117,7 @@ cd REPOSITORY
 ```
 
 Replace `OWNER` and `REPOSITORY` with the values from the copied GitHub URL. Run all following commands from the repository root—the directory containing `docker-compose.yml`.
+Alternatively, choose **Download ZIP** on GitHub, extract it, and open PowerShell in the extracted folder containing `docker-compose.yml`.
 
 ### 3. Create the local environment file
 
@@ -208,7 +210,8 @@ The Compose file bind-mounts the project directory, so the SQLite database under
 - **Compose says `SECRET_KEY` is not set:** Check that `.env` is in the same folder as `docker-compose.yml`, contains `SECRET_KEY=<your-random-key>`, and that commands are being run from the repository root.
 - **The browser cannot connect:** Confirm both containers are running with `docker compose ps`; check `docker compose logs web`; verify the URL uses the configured host port (`5050` by default).
 - **Submissions stay queued:** Confirm the `worker` service is running and inspect `docker compose logs worker`.
-- **Worker reports Bubblewrap or user-namespace errors:** Run the worker on a Linux host/kernel that permits Bubblewrap user namespaces. Do not disable sandboxing for a production deployment.
+- **Worker reports Docker socket, daemon, or image errors:** Start Docker Desktop using Linux containers, then run `docker compose up --build -d` again. Confirm the worker has the `/var/run/docker.sock` mount. Do not switch to an unsandboxed backend.
+- **Docker Desktop is in Windows containers mode:** Switch Docker Desktop to Linux containers and restart the Compose project.
 - **Docker cannot build or pull images:** Start Docker Desktop/Engine and ensure the machine has internet access for the initial image and package download.
 
 ---
@@ -412,11 +415,12 @@ To run all tests inside the Docker environment:
 ```bash
 docker compose run --rm test pytest -v
 ```
-Or directly using pytest:
+On Linux with GCC/G++ installed, tests may also be run directly:
 ```bash
 pytest -v
 ```
-Sandbox integration tests require Bubblewrap with Linux user-namespace support. They are reported as skipped when the current environment cannot create those namespaces; this often applies to Docker Desktop. The production worker does not skip this requirement and refuses to start without a functional Bubblewrap sandbox. Run the sandbox integration tests on a Linux host with user namespaces enabled.
+On Windows, run the tests in the Docker container; direct host execution cannot run the Linux compiler and Bubblewrap tests.
+Bubblewrap-specific integration tests are skipped when the environment cannot create Linux user namespaces. The Windows/Docker Desktop deployment uses the Docker-backed sandbox instead; to verify it end to end, submit Python and compiled-language programs through the running Compose app and inspect `docker compose logs worker`. The production worker refuses to start if the configured sandbox backend, Docker daemon, or sandbox image is unavailable.
 
 ### Test Suite Coverage Breakdown
 - `tests/test_selftests.py`: Sandbox security, C/C++/Python execution, TLE infinite loop, MLE memory limit, OLE output limit, RE segfault, fork-bomb defense, filesystem read protections.
@@ -440,7 +444,7 @@ Sandbox integration tests require Bubblewrap with Linux user-namespace support. 
 - [x] **Rate Limiting:** Flask-Limiter protecting authentication and submission endpoints against spam and brute-force.
 - [x] **Input Sanitization:** Bleach sanitizes problem statements allowing only safe HTML tags and stripping script/event handlers.
 - [x] **Payload Restrictions:** Strict 64 KB source code submission limit; 16 MB maximum for teacher ZIP test archives.
-- [x] **Sandboxing:** Linux Bubblewrap (`bwrap`) isolation with `--unshare-net`, restricted mounts, non-root user, and setrlimit resource caps.
+- [x] **Sandboxing:** Default Compose execution uses disposable Docker containers with networking disabled, a read-only root filesystem, a non-root user, dropped capabilities, and resource limits; Bubblewrap remains an optional native-Linux backend.
 - [x] **Hidden Test Data Privacy:** Server never transmits hidden test inputs, outputs, or diffs to students.
 - [x] **Stale Score Handling:** Test modifications increment problem version and mark old scores stale until rejudged.
 - [x] **Audit Logging:** Administrative actions, exports, imports, and rejudges recorded with IP addresses.

@@ -23,6 +23,7 @@ from cpjudge.engine.sandbox import (
     create_preexec_fn,
     is_bwrap_available,
 )
+from cpjudge.engine.docker_sandbox import DockerSandbox
 from cpjudge.engine.verdicts import Verdict
 
 
@@ -72,13 +73,19 @@ class Checker:
         custom_checker_path: Optional[str] = None,
         use_bwrap: bool = False,
         sandbox_user: Optional[str] = "judge_sandbox",
+        sandbox_backend: Optional[str] = None,
+        docker_image: str = "cpjudge:local",
     ):
         self.checker_type = checker_type
         self.float_tolerance = float_tolerance
         self.custom_checker_path = custom_checker_path
-        self.use_bwrap = use_bwrap
+        self.sandbox_backend = sandbox_backend or ("bwrap" if use_bwrap else "process")
+        if self.sandbox_backend not in ("process", "bwrap", "docker"):
+            raise ValueError(f"Unknown sandbox backend: {self.sandbox_backend}")
+        self.use_bwrap = self.sandbox_backend == "bwrap"
         self.sandbox_user = sandbox_user
-        if use_bwrap and not is_bwrap_available(sandbox_user):
+        self.docker_image = docker_image
+        if self.use_bwrap and not is_bwrap_available(sandbox_user):
             raise RuntimeError("Bubblewrap is required for sandboxed checking but is unavailable.")
 
     def check(
@@ -190,6 +197,26 @@ class Checker:
                 cmd = [sys.executable, str(checker_file), str(in_file), str(exp_file), str(act_file)]
             else:
                 cmd = [str(checker_file), str(in_file), str(exp_file), str(act_file)]
+
+            if self.sandbox_backend == "docker":
+                result = DockerSandbox(self.docker_image).run(
+                    command=cmd,
+                    work_dir=tmp_path,
+                    timeout=5.0,
+                    cpu_limit_seconds=5.0,
+                    memory_limit_bytes=256 * 1024 * 1024,
+                    output_limit_bytes=1024 * 1024,
+                    nproc_limit=16,
+                )
+                output = (result.stdout.strip() + "\n" + result.stderr.strip()).strip()
+                if result.exit_code == 0 and not result.timed_out:
+                    return CheckResult(verdict=Verdict.AC, feedback=output or None)
+                if result.timed_out:
+                    return CheckResult(verdict=Verdict.WA, feedback="Custom checker timed out after 5.0s")
+                return CheckResult(
+                    verdict=Verdict.WA,
+                    feedback=output or f"Custom checker exited with code {result.exit_code}",
+                )
 
             if self.use_bwrap:
                 cmd = build_bwrap_args(cmd, tmp_path, sandbox_user=self.sandbox_user)

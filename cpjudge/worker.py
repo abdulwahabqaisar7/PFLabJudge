@@ -23,6 +23,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from cpjudge.app import create_app
+from cpjudge.engine.docker_sandbox import DockerSandbox
 from cpjudge.engine.judge import judge
 from cpjudge.engine.sandbox import is_bwrap_available
 from cpjudge.models import Submission, db, utc_now
@@ -47,10 +48,20 @@ class JudgeWorker:
         self.poll_interval = poll_interval
         self._stop_requested = False
         if not self.app.config.get("TESTING"):
-            if not self.app.config.get("USE_BWRAP"):
-                raise RuntimeError("The judge worker requires Bubblewrap; refusing to run without isolation.")
-            if not is_bwrap_available(self.app.config.get("SANDBOX_USER", "judge_sandbox")):
-                raise RuntimeError("Bubblewrap is required by the judge worker but is unavailable.")
+            backend = self.app.config.get("SANDBOX_BACKEND", "bwrap")
+            if backend == "bwrap":
+                if not self.app.config.get("USE_BWRAP"):
+                    raise RuntimeError(
+                        "USE_BWRAP must remain enabled when SANDBOX_BACKEND=bwrap."
+                    )
+                if not is_bwrap_available(self.app.config.get("SANDBOX_USER", "judge_sandbox")):
+                    raise RuntimeError("Bubblewrap is required by the judge worker but is unavailable.")
+            elif backend == "docker":
+                DockerSandbox(self.app.config.get("SANDBOX_IMAGE", "cpjudge:local")).validate()
+            else:
+                raise RuntimeError(
+                    f"Unsupported SANDBOX_BACKEND={backend!r}; refusing to run without isolation."
+                )
 
     def initialize_database(self) -> None:
         """Create missing tables before polling, including on a fresh Compose clone."""
