@@ -41,8 +41,8 @@ def seed_database(drop_existing: bool = False) -> None:
         if not teacher:
             print("Creating Teacher account (teacher)...")
             teacher = User(
-                username="teacher",
-                name="Prof. Alan Turing",
+                username="Abdul Wahab Qaisar",
+                name="Abdul Wahab Qaisar",
                 role="teacher",
                 force_password_change=False,
             )

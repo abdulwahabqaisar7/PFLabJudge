@@ -19,11 +19,12 @@ class FakeAPIError(Exception):
 
 class FakeContainer:
     id = "sandbox-container"
-    attrs = {"State": {"Status": "exited", "ExitCode": 0, "OOMKilled": False}}
 
     def __init__(self):
         self.archive = None
         self.removed = False
+        self.killed = False
+        self.attrs = {"State": {"Status": "running", "ExitCode": 0, "OOMKilled": False}}
 
     def put_archive(self, path, archive):
         self.archive = (path, archive)
@@ -35,18 +36,47 @@ class FakeContainer:
     def reload(self):
         pass
 
+    def kill(self):
+        self.killed = True
+        self.attrs["State"]["Status"] = "exited"
+
+    def wait(self, timeout=None):
+        return {"StatusCode": 0}
+
     def remove(self, force=False):
         self.removed = force
 
 
+class FakeVolume:
+    name = "sandbox-work-volume"
+
+    def __init__(self):
+        self.removed = False
+
+    def remove(self):
+        self.removed = True
+
+
+class FakeVolumes:
+    def __init__(self):
+        self.volume = FakeVolume()
+        self.create_options = None
+
+    def create(self, **options):
+        self.create_options = options
+        return self.volume
+
+
 class FakeDockerClient:
     def __init__(self):
+        self.staging_container = FakeContainer()
         self.container = FakeContainer()
-        self.create_options = None
+        self.create_options = []
         self.closed = False
         self.containers = self
         self.images = self
         self.api = self
+        self.volumes = FakeVolumes()
 
     def ping(self):
         return True
@@ -55,14 +85,16 @@ class FakeDockerClient:
         return image
 
     def create(self, image, **options):
-        self.create_options = {"image": image, **options}
-        return self.container
+        self.create_options.append({"image": image, **options})
+        return (self.staging_container if len(self.create_options) == 1
+                else self.container)
 
     def get_archive(self, container_id, path):
         files = {
             "/work/.cpjudge_stdout": b"student output\n",
             "/work/.cpjudge_stderr": b"",
             "/work/.cpjudge_metrics": b"0.12 0.03 2048",
+            "/work/.cpjudge_exit": b"0",
             "/work/solution.out": b"compiled binary",
         }
         name = path.rsplit("/", 1)[-1]
@@ -109,7 +141,7 @@ def test_docker_sandbox_runs_with_restrictions_and_collects_artifacts(tmp_path, 
         collect_files=["solution.out"],
     )
 
-    options = client.create_options
+    staging_options, options = client.create_options
     assert options["network_mode"] == "none"
     assert options["read_only"] is True
     assert options["cap_drop"] == ["ALL"]
@@ -117,14 +149,38 @@ def test_docker_sandbox_runs_with_restrictions_and_collects_artifacts(tmp_path, 
     assert options["user"] == "10001:10001"
     assert options["pids_limit"] == 12
     assert options["mem_limit"] == 128 * 1024 * 1024
-    assert options["tmpfs"]["/work"].startswith("rw,exec,nosuid,nodev")
+    assert options["tmpfs"] == {"/tmp": "rw,nosuid,nodev,size=16m,mode=1777"}
+    assert options["volumes"] == {
+        "sandbox-work-volume": {"bind": "/work", "mode": "rw"}
+    }
+    assert client.volumes.create_options == {
+        "driver": "local",
+        "driver_opts": {
+            "type": "tmpfs",
+            "device": "tmpfs",
+            "o": "size=128m,exec,nosuid,nodev,mode=1777",
+        },
+    }
+    assert staging_options["volumes"] == options["volumes"]
+    assert staging_options["network_mode"] == "none"
+    assert staging_options["cap_drop"] == ["ALL"]
     assert "/var/run/docker.sock" not in repr(options)
     assert "/work/solution.py" in options["command"][2]
+    assert staging_options["command"] == ["/bin/sh", "-c", "sleep 30"]
+    assert options["stdin_open"] is False
+    assert options["command"][2].endswith("sleep 30")
+    assert client.staging_container.archive[0] == "/work"
+    with tarfile.open(fileobj=io.BytesIO(client.staging_container.archive[1]), mode="r:") as archive:
+        assert archive.extractfile("solution.py").read() == b"print('student output')"
+        assert archive.extractfile(".cpjudge_stdin").read() == b"input\n"
     assert result.stdout == "student output\n"
     assert result.cpu_time == pytest.approx(0.15)
     assert result.memory_kb == 2048
     assert result.artifacts["solution.out"] == b"compiled binary"
+    assert client.staging_container.removed is True
+    assert client.container.killed is True
     assert client.container.removed is True
+    assert client.volumes.volume.removed is True
     assert client.closed is True
 
 

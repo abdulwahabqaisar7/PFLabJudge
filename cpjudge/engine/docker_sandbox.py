@@ -95,11 +95,13 @@ class DockerSandbox:
         )
 
         client = docker.from_env()
+        work_volume = None
+        staging_container = None
         container = None
-        started = time.monotonic()
         timed_out = False
         cpu_limit_exceeded = False
         out_of_memory = False
+        execution_completed = False
         cpu_time = 0.0
         exit_code = -1
         try:
@@ -110,6 +112,34 @@ class DockerSandbox:
                 raise DockerSandboxError(
                     f"Required Docker sandbox image {self.image!r} is not available."
                 ) from exc
+
+            work_volume = client.volumes.create(
+                driver="local",
+                driver_opts={
+                    "type": "tmpfs",
+                    "device": "tmpfs",
+                    "o": "size=128m,exec,nosuid,nodev,mode=1777",
+                },
+            )
+            staging_container = client.containers.create(
+                self.image,
+                command=["/bin/sh", "-c", "sleep 30"],
+                working_dir="/work",
+                user="0:0",
+                network_mode="none",
+                cap_drop=["ALL"],
+                security_opt=["no-new-privileges:true"],
+                pids_limit=2,
+                mem_limit=64 * 1024 * 1024,
+                volumes={work_volume.name: {"bind": "/work", "mode": "rw"}},
+                detach=True,
+                stdin_open=False,
+                tty=False,
+                labels={"cpjudge.sandbox": "true", "cpjudge.sandbox.staging": "true"},
+            )
+            staging_container.start()
+            if not staging_container.put_archive("/work", archive):
+                raise DockerSandboxError("Docker failed to stage files into the sandbox.")
 
             container = client.containers.create(
                 self.image,
@@ -123,18 +153,17 @@ class DockerSandbox:
                 pids_limit=nproc_limit,
                 mem_limit=memory_limit_bytes,
                 memswap_limit=memory_limit_bytes,
-                tmpfs={
-                    "/tmp": "rw,nosuid,nodev,size=16m,mode=1777",
-                    "/work": "rw,exec,nosuid,nodev,size=128m,mode=1777",
-                },
+                tmpfs={"/tmp": "rw,nosuid,nodev,size=16m,mode=1777"},
+                volumes={work_volume.name: {"bind": "/work", "mode": "rw"}},
                 detach=True,
                 stdin_open=False,
                 tty=False,
                 labels={"cpjudge.sandbox": "true"},
             )
-            if not container.put_archive("/work", archive):
-                raise DockerSandboxError("Docker failed to stage files into the sandbox.")
             container.start()
+            started = time.monotonic()
+            staging_container.remove(force=True)
+            staging_container = None
 
             deadline = started + wall_timeout
             while True:
@@ -161,6 +190,20 @@ class DockerSandbox:
                 if status != "running":
                     time.sleep(0.025)
                     continue
+                completion_marker = self._read_container_file(
+                    client,
+                    container.id,
+                    "/work/.cpjudge_exit",
+                    16,
+                    optional=True,
+                )
+                if completion_marker:
+                    try:
+                        exit_code = int(completion_marker.decode("ascii"))
+                    except ValueError as exc:
+                        raise DockerSandboxError("Sandbox produced an invalid exit status.") from exc
+                    execution_completed = True
+                    break
                 stats = container.stats(stream=False)
                 try:
                     usage_ns = stats["cpu_stats"]["cpu_usage"]["total_usage"]
@@ -230,6 +273,14 @@ class DockerSandbox:
                 if data:
                     artifacts[name] = data
 
+            if execution_completed:
+                try:
+                    container.kill()
+                except APIError as exc:
+                    if exc.status_code != 409:
+                        raise
+                container.wait(timeout=5)
+
             output_limit_exceeded = (
                 len(stdout) > output_limit or exit_code in (25, 153, -25)
             )
@@ -260,7 +311,19 @@ class DockerSandbox:
                         if exc.status_code != 404:
                             raise
             finally:
-                client.close()
+                try:
+                    if staging_container is not None:
+                        try:
+                            staging_container.remove(force=True)
+                        except APIError as exc:
+                            if exc.status_code != 404:
+                                raise
+                finally:
+                    try:
+                        if work_volume is not None:
+                            work_volume.remove()
+                    finally:
+                        client.close()
 
     @staticmethod
     def _map_command(command: list[str], work_dir: Path) -> list[str]:
@@ -343,7 +406,8 @@ class DockerSandbox:
             "</work/.cpjudge_stdin "
             ">/work/.cpjudge_stdout 2>/work/.cpjudge_stderr; "
             "status=$?; "
-            "printf '%s' \"$status\" >/work/.cpjudge_exit"
+            "printf '%s' \"$status\" >/work/.cpjudge_exit; "
+            "sleep 30"
         )
 
     @staticmethod
