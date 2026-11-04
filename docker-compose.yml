@@ -1,4 +1,19 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=cpjudge
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      - POSTGRES_DB=cpjudge
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cpjudge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   web:
     image: cpjudge:local
     build:
@@ -12,12 +27,15 @@ services:
     environment:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in a .env file}
-      - DATABASE_URL=${DATABASE_URL:-}
+      - DATABASE_URL=postgresql://cpjudge:${POSTGRES_PASSWORD}@db/cpjudge
       - SANDBOX_BACKEND=${SANDBOX_BACKEND:-docker}
       - SANDBOX_IMAGE=${SANDBOX_IMAGE:-cpjudge:local}
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Karachi
       - APP_TIMEZONE=Asia/Karachi
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   worker:
@@ -25,23 +43,31 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: python -m cpjudge.worker
+    command: python -m cpjudge.worker --poll-interval 0.2
     volumes:
       - .:/app
-      - /var/run/docker.sock:/var/run/docker.sock
+      # NOTE: no docker.sock needed with bwrap!
     environment:
       - FLASK_ENV=worker
-      - DATABASE_URL=${DATABASE_URL:-}
-      - SANDBOX_BACKEND=${SANDBOX_BACKEND:-docker}
-      - SANDBOX_IMAGE=${SANDBOX_IMAGE:-cpjudge:local}
+      - DATABASE_URL=postgresql://cpjudge:${POSTGRES_PASSWORD}@db/cpjudge
+      - SANDBOX_BACKEND=${SANDBOX_BACKEND:-bwrap}
       - SANDBOX_USER=${SANDBOX_USER:-judge_sandbox}
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Karachi
       - APP_TIMEZONE=Asia/Karachi
+    cap_add:
+      - SYS_ADMIN          # ← required for bwrap user namespaces
+    security_opt:
+      - apparmor:unconfined # ← required on Ubuntu hosts with AppArmor
     depends_on:
-      - web
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    deploy:
+      replicas: 3
     restart: unless-stopped
-
+  
   test:
     profiles:
       - test
@@ -58,3 +84,6 @@ services:
       - SYS_ADMIN
     security_opt:
       - apparmor:unconfined
+
+volumes:
+  pgdata:

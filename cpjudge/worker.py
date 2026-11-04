@@ -43,7 +43,7 @@ RECOVERY_INTERVAL_SECONDS = 60
 class JudgeWorker:
     """Judge worker process handling submission queue polling, judging, and recovery."""
 
-    def __init__(self, app: Optional[Flask] = None, poll_interval: float = 1.0):
+    def __init__(self, app: Optional[Flask] = None, poll_interval: float = 0.2):
         self.app = app or create_app()
         self.poll_interval = poll_interval
         self._stop_requested = False

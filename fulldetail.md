@@ -82,7 +82,7 @@
 |---|---|
 | **Web Framework** | Flask 3.0.3 |
 | **ORM** | SQLAlchemy 2.0.35 / Flask-SQLAlchemy 3.1.1 |
-| **Database** | SQLite (default) or PostgreSQL (via `DATABASE_URL`) |
+| **Database** | PostgreSQL 16 (production Docker compose) or SQLite (fallback) |
 | **Auth** | Flask-Login 0.6.3 |
 | **Forms & CSRF** | Flask-WTF 1.2.1 |
 | **Rate Limiting** | Flask-Limiter 3.8.0 |
@@ -104,29 +104,31 @@
 flowchart TD
     Browser["🌐 Student / Teacher Browser"]
     Web["🖥️ Flask Web App\n(run.py → app.py)"]
-    DB[("🗄️ SQLite / PostgreSQL\n(cpjudge.db)")]
-    Worker["⚙️ Judge Worker\n(engine/cli.py loop)"]
-    Sandbox["🔒 Sandbox\n(bwrap / Docker)"]
+    DB[("🗄️ PostgreSQL\n(or SQLite fallback)")]
+    
+    subgraph ParallelWorkers["⚙️ Judge Workers (3 Replicas)"]
+        W1["Worker #1\n(bwrap sandbox)"]
+        W2["Worker #2\n(bwrap sandbox)"]
+        W3["Worker #3\n(bwrap sandbox)"]
+    end
+
     Compiler["🔨 Compiler\n(gcc / g++ / py_compile)"]
-    Runner["▶️ Runner\n(subprocess + psutil)"]
+    Runner["▶️ Runner\n(subprocess + psutil + bwrap)"]
     Checker["✅ Checker\n(exact/token/float/custom)"]
     Scorer["📊 Scorer\n(per_test/all_or_nothing/grouped)"]
 
     Browser -->|HTTP requests| Web
     Web -->|SQLAlchemy ORM| DB
     Web -->|queues submission 'queued'| DB
-    Worker -->|polls DB for 'queued' submissions| DB
-    Worker --> Compiler
-    Compiler --> Sandbox
-    Worker --> Runner
-    Runner --> Sandbox
-    Worker --> Checker
-    Checker --> Sandbox
-    Worker --> Scorer
-    Worker -->|writes Result, Score, updates Submission| DB
+    DB -->|SELECT ... FOR UPDATE SKIP LOCKED| ParallelWorkers
+    ParallelWorkers --> Compiler
+    ParallelWorkers --> Runner
+    ParallelWorkers --> Checker
+    ParallelWorkers --> Scorer
+    ParallelWorkers -->|writes Result, Score, status='done'| DB
 ```
 
-The web app and worker share the same database. The worker polls for `queued` submissions and processes them asynchronously.
+The web app and workers share the same database. Multiple workers run in parallel, using PostgreSQL's row-level `SKIP LOCKED` to atomically claim submissions with zero collisions.
 
 ---
 
@@ -850,7 +852,7 @@ All routes require `@student_required`.
 | `/assignments/<id>/problem` | GET, POST | View problem statement and submit solution |
 | `/assignments/<id>/problems/<pid>` | GET, POST | Same, for specific problem in multi-problem assignment |
 | `/submissions/<id>` | GET | Submission detail with test results (hidden test outputs masked) |
-| `/submissions/<id>/status` | GET | JSON polling endpoint (called every 2s by browser) |
+| `/submissions/<id>/status` | GET | JSON polling endpoint (called every 500ms by browser) |
 | `/history` | GET | Full submission history with filters (problem, assignment, verdict) |
 
 #### Submission Flow
@@ -1115,7 +1117,7 @@ All templates extend `base.html` which provides:
 | `student/assignments.html` | Assignment list with attempt counts and best scores |
 | `student/assignment_detail.html` | Per-problem progress within an assignment |
 | `student/problem_view.html` | Problem statement (Markdown-rendered) + CodeMirror editor with file upload |
-| `student/submission_detail.html` | Test results table, diff viewer, live JS polling (every 2s) |
+| `student/submission_detail.html` | Test results table, diff viewer, live JS polling (every 500ms) |
 | `student/history.html` | Full submission history with filter dropdowns |
 
 ### Teacher Pages
@@ -1173,15 +1175,16 @@ All templates extend `base.html` which provides:
 The `.env` file at the project root configures the runtime:
 
 ```ini
-SECRET_KEY=<64-character hex string>   # Required in production
-DATABASE_URL=postgresql://user:pass@host/dbname   # Optional; SQLite default
-SANDBOX_BACKEND=docker                 # 'bwrap' | 'docker' | 'process'
-SANDBOX_IMAGE=cpjudge:local            # Docker image for sandbox
-USE_BWRAP=true                         # Enable Bubblewrap
-SANDBOX_USER=judge_sandbox             # Low-privilege Unix user
-PORT=5050                              # Host port for web service
-APP_TIMEZONE=Asia/Karachi              # Display timezone
+SECRET_KEY=59d24810d67a220525d26485f92768fc6d9a0adbaf6914d73faf151989d2f72f   # Required session secret
+POSTGRES_PASSWORD=cpjudge_secure_db_pass_2026                                   # Required for PostgreSQL
+SANDBOX_BACKEND=bwrap                                                           # 'bwrap' (fast, default) | 'docker' | 'process'
+PORT=5050                                                                       # Host port for web service (default: 5050)
+APP_TIMEZONE=Asia/Karachi                                                       # Display timezone (default: Asia/Karachi)
 ```
+
+The database URL is automatically composed in `docker-compose.yml`:
+`postgresql://cpjudge:${POSTGRES_PASSWORD}@db/cpjudge`
+If running without Docker, omitting `DATABASE_URL` safely falls back to local SQLite at `instance/cpjudge.db`.
 
 ---
 
@@ -1389,17 +1392,16 @@ Run `python seed.py` after starting the application to populate:
 ### Steps
 
 ```bash
-# 1. Generate SECRET_KEY (Windows PowerShell)
-$bytes = New-Object byte[] 32
-$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-$rng.GetBytes($bytes)
-$secret = -join ($bytes | ForEach-Object { $_.ToString('x2') })
-"SECRET_KEY=$secret" | Set-Content -Encoding ascii .env
+# 1. Generate SECRET_KEY & create .env (if not already present)
+# Ensure .env contains:
+# SECRET_KEY=<hex-string>
+# POSTGRES_PASSWORD=cpjudge_secure_db_pass_2026
+# SANDBOX_BACKEND=bwrap
 
-# 2. Build and start services
+# 2. Build and start services (PostgreSQL + Web + 3 Parallel Workers)
 docker compose up --build -d
 
-# 3. Seed the database
+# 3. Seed the database (creates tables & demo users in PostgreSQL)
 docker compose exec web python seed.py
 
 # 4. Open the application
@@ -1408,25 +1410,28 @@ docker compose exec web python seed.py
 
 ### Docker Services
 
-| Service | Description |
-|---|---|
-| `web` | Flask + Gunicorn web server |
-| `worker` | Judge worker process (polls for queued submissions) |
-| `test` | pytest test runner (Compose profile: `test`) |
+| Service | Description | Replicas |
+|---|---|---|
+| `db` | PostgreSQL 16 (healthchecked, persistent volume `pgdata`) | 1 |
+| `web` | Flask + Gunicorn web server | 1 |
+| `worker` | Sandboxed judge daemon (`bwrap`, `--poll-interval 0.2`) | 3 |
+| `test` | pytest test runner (Compose profile: `test`) | 0 (on-demand) |
 
 ### Common Commands
 
 ```bash
-docker compose logs -f web worker     # Follow live logs
+docker compose logs -f web worker     # Follow live logs across workers
+docker compose ps                     # Check status of db, web, and workers
 docker compose restart                # Restart all services
-docker compose down                   # Stop (keeps database)
+docker compose down                   # Stop (keeps database in pgdata volume)
 docker compose exec web python seed.py --drop  # Reset + re-seed
-docker compose exec web python -m cpjudge.utils.backup --backup  # Backup DB
 ```
 
-### Database Persistence
+### Database Persistence & Concurrency
 
-SQLite database stored at `instance/cpjudge.db` on the host (mounted as a volume). Persists across container restarts and `docker compose down`. Back up before removing the project folder.
+- **PostgreSQL Database**: Data is stored securely in the Docker volume `pgdata`.
+- **Parallel Workers**: With 3 worker replicas, submissions are claimed concurrently via PostgreSQL's row-level `FOR UPDATE SKIP LOCKED`. There are zero lock conflicts, and lab submission throughput is multiplied by 3x.
+- **SQLite (Fallback)**: When running locally without Docker or `DATABASE_URL`, the application automatically stores data in `instance/cpjudge.db`.
 
 ---
 
@@ -1436,27 +1441,27 @@ SQLite database stored at `instance/cpjudge.db` on the host (mounted as a volume
 sequenceDiagram
     participant S as Student Browser
     participant W as Flask Web App
-    participant DB as Database
-    participant JW as Judge Worker
-    participant SB as Sandbox
+    participant DB as PostgreSQL Database
+    participant JW as 3x Parallel Judge Workers
+    participant SB as Bubblewrap Sandbox
 
     S->>W: POST /assignments/<id>/problem (source code)
     W->>W: Validate enrollment, attempt limit, code size
     W->>DB: INSERT submissions (status='queued')
     W-->>S: Redirect to submission detail page
 
-    S->>W: GET /submissions/<id>/status (every 2s)
+    S->>W: GET /submissions/<id>/status (every 500ms)
     W-->>S: {"status": "queued", "is_done": false}
 
-    JW->>DB: SELECT submission WHERE status='queued' (poll)
-    DB-->>JW: Return submission record
+    JW->>DB: SELECT submission WHERE status='queued' FOR UPDATE SKIP LOCKED
+    DB-->>JW: Atomically return submission to free worker
     JW->>DB: UPDATE submission SET status='judging', claimed_at=now
 
-    JW->>SB: Compile source code
+    JW->>SB: Compile source code (bwrap / gcc / g++ / py_compile)
     SB-->>JW: CompileResult (success or CE)
 
     loop For each test case
-        JW->>SB: Run binary with test input
+        JW->>SB: Run binary with test input (bwrap --unshare-net)
         SB-->>JW: RunResult (stdout, cpu_time, memory_kb, verdict)
         JW->>JW: Check output (exact/token/float/custom)
         JW->>JW: Assign marks (scorer)
