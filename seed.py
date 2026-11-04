@@ -325,7 +325,7 @@ Print a single integer: the product $A \\times B$.
         db.session.commit()
         print("\nDatabase seeded successfully!")
         print("--------------------------------------------------")
-        print("Teacher Account:   teacher     / Teacher@123")
+        print("Teacher Account:   Abdul Wahab Qaisar     / Teacher@123")
         print("Student Account 1: bcsf20m001  / Student@123")
         print("Student Account 2: bcsf20m002  / Student@123")
         print("Student Account 3: bcsf20m003  / Student@123 (Force pwd change)")
