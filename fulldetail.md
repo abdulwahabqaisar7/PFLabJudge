@@ -1471,8 +1471,4 @@ sequenceDiagram
     W-->>S: {"status": "done", "verdict": "AC", "is_done": true}
     S->>W: GET /submissions/<id> (full page load)
     W-->>S: Render submission detail with test results table
-```
-
 ---
-
-*Generated automatically by analyzing the PUCIT-PF-LAB-JUDGE project source code — November 2026.*
