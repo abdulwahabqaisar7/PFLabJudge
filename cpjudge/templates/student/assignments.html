@@ -67,10 +67,10 @@
                                 <td>
                                     {% if st.best_score is not none %}
                                         <strong class="text-primary">{{ st.best_score }}</strong> / {{ a.total_marks }}
-                                        {% if st.latest_verdict == 'AC' %}
+                                        {% if st.best_verdict == 'AC' %}
                                             <span class="badge bg-success ms-1">AC</span>
-                                        {% elif st.latest_verdict %}
-                                            <span class="badge bg-secondary ms-1">{{ st.latest_verdict }}</span>
+                                        {% elif st.best_verdict %}
+                                            <span class="badge bg-secondary ms-1">{{ st.best_verdict }}</span>
                                         {% endif %}
                                     {% else %}
                                         <span class="text-muted">&mdash;</span>

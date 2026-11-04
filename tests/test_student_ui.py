@@ -182,6 +182,74 @@ def test_student_dashboard_and_assignments(client, student1, student2, test_setu
     assert b"Assignment 01 - Basics" not in resp.data
 
 
+def test_assignment_best_verdict_matches_best_scoring_submission(
+    client, student1, test_setup
+):
+    assignment = test_setup["assignment"]
+    problem = test_setup["problem"]
+    accepted = Submission(
+        user_id=student1.id,
+        problem_id=problem.id,
+        assignment_id=assignment.id,
+        language="cpp",
+        source_code="accepted",
+        status="done",
+        verdict="AC",
+        tests_version=problem.tests_version,
+        created_at=utc_now() - timedelta(minutes=1),
+    )
+    later_wrong_answer = Submission(
+        user_id=student1.id,
+        problem_id=problem.id,
+        assignment_id=assignment.id,
+        language="cpp",
+        source_code="wrong answer",
+        status="done",
+        verdict="WA",
+        tests_version=problem.tests_version,
+        created_at=utc_now(),
+    )
+    db.session.add_all([accepted, later_wrong_answer])
+    db.session.flush()
+    db.session.add_all([
+        Score(
+            submission_id=accepted.id,
+            assignment_id=assignment.id,
+            user_id=student1.id,
+            problem_id=problem.id,
+            raw_score=100,
+            final_score=100,
+            max_possible_score=100,
+        ),
+        Score(
+            submission_id=later_wrong_answer.id,
+            assignment_id=assignment.id,
+            user_id=student1.id,
+            problem_id=problem.id,
+            raw_score=0,
+            final_score=0,
+            max_possible_score=100,
+        ),
+    ])
+    db.session.commit()
+
+    client.post(
+        "/auth/login",
+        data={"username": "bcsf20m001", "password": "Student@123"},
+    )
+
+    detail = client.get(f"/student/assignments/{assignment.id}")
+    assert detail.status_code == 200
+    assert b"Best Verdict" in detail.data
+    assert b">AC</span>" in detail.data
+    assert b">WA</span>" not in detail.data
+
+    assignments = client.get("/student/assignments")
+    assert assignments.status_code == 200
+    assert b">AC</span>" in assignments.data
+    assert b">WA</span>" not in assignments.data
+
+
 # ==============================================================================
 # PROBLEM STATEMENT & ENROLLMENT PERMISSIONS
 # ==============================================================================

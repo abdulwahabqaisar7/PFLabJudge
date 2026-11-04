@@ -103,18 +103,18 @@
                                 {% endif %}
                             </td>
                             <td class="text-center">
-                                {% if pst.latest_verdict == 'AC' %}
+                                {% if pst.best_verdict == 'AC' %}
                                     <span class="badge bg-success">AC</span>
-                                {% elif pst.latest_verdict == 'WA' %}
+                                {% elif pst.best_verdict == 'WA' %}
                                     <span class="badge bg-danger">WA</span>
-                                {% elif pst.latest_verdict == 'TLE' %}
+                                {% elif pst.best_verdict == 'TLE' %}
                                     <span class="badge bg-warning text-dark">TLE</span>
-                                {% elif pst.latest_verdict == 'MLE' %}
+                                {% elif pst.best_verdict == 'MLE' %}
                                     <span class="badge bg-warning text-dark">MLE</span>
-                                {% elif pst.latest_verdict == 'CE' %}
+                                {% elif pst.best_verdict == 'CE' %}
                                     <span class="badge bg-secondary">CE</span>
-                                {% elif pst.latest_verdict %}
-                                    <span class="badge bg-secondary">{{ pst.latest_verdict }}</span>
+                                {% elif pst.best_verdict %}
+                                    <span class="badge bg-secondary">{{ pst.best_verdict }}</span>
                                 {% else %}
                                     <span class="badge bg-light text-muted border">Unsubmitted</span>
                                 {% endif %}

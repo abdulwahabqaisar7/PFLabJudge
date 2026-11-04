@@ -85,28 +85,55 @@ def assignments():
             .order_by(Submission.created_at.desc())
             .all()
         )
-        latest_verdict = all_subs[0].verdict if all_subs else None
         problems = a.problems
         if problems:
             has_any_score = False
             total_best_score = 0.0
+            best_problem_submissions = []
             for p in problems:
-                p_scores = [
-                    s.score.final_score for s in all_subs
-                    if s.problem_id == p.id and s.has_current_score
-                ]
-                if p_scores:
+                p_subs = [s for s in all_subs if s.problem_id == p.id]
+                scored_subs = [s for s in p_subs if s.has_current_score]
+                if scored_subs:
                     has_any_score = True
-                    total_best_score += max(p_scores)
+                    best_submission = max(
+                        scored_subs,
+                        key=lambda s: (
+                            s.score.final_score,
+                            s.verdict == "AC",
+                        ),
+                    )
+                    total_best_score += best_submission.score.final_score
+                    best_problem_submissions.append(best_submission)
             best_score = round(total_best_score, 1) if has_any_score else None
+            if len(problems) == 1:
+                best_verdict = (
+                    best_problem_submissions[0].verdict
+                    if best_problem_submissions
+                    else (all_subs[0].verdict if all_subs else None)
+                )
+            elif best_problem_submissions and all(
+                submission.verdict == "AC" for submission in best_problem_submissions
+            ) and len(best_problem_submissions) == len(problems):
+                best_verdict = "AC"
+            else:
+                best_verdict = None
         else:
-            scores = [s.score.final_score for s in all_subs if s.has_current_score]
-            best_score = max(scores) if scores else None
+            scored_subs = [s for s in all_subs if s.has_current_score]
+            best_submission = max(
+                scored_subs,
+                key=lambda s: (s.score.final_score, s.verdict == "AC"),
+                default=None,
+            )
+            best_score = best_submission.score.final_score if best_submission else None
+            best_verdict = (
+                best_submission.verdict if best_submission else
+                (all_subs[0].verdict if all_subs else None)
+            )
 
         assignment_stats[a.id] = {
             "attempts": len(all_subs),
             "best_score": best_score,
-            "latest_verdict": latest_verdict,
+            "best_verdict": best_verdict,
         }
 
     return render_template(
@@ -143,16 +170,24 @@ def assignment_detail(assignment_id: int):
             .order_by(Submission.created_at.desc())
             .all()
         )
-        scores = [s.score.final_score for s in subs if s.has_current_score]
-        best_score = max(scores) if scores else None
-        latest_verdict = subs[0].verdict if subs else None
+        scored_subs = [s for s in subs if s.has_current_score]
+        best_submission = max(
+            scored_subs,
+            key=lambda s: (s.score.final_score, s.verdict == "AC"),
+            default=None,
+        )
+        best_score = best_submission.score.final_score if best_submission else None
+        best_verdict = (
+            best_submission.verdict if best_submission else
+            (subs[0].verdict if subs else None)
+        )
         if best_score is not None:
             total_earned += best_score
 
         problem_stats.append({
             "problem": prob,
             "attempts": len(subs),
-            "latest_verdict": latest_verdict,
+            "best_verdict": best_verdict,
             "best_score": best_score,
         })
 
