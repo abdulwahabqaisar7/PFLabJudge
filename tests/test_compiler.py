@@ -15,6 +15,18 @@ def test_sandbox_does_not_mount_the_host_root(tmp_path):
     ]
 
 
+def test_bwrap_enters_user_namespace_before_dropping_root(monkeypatch, tmp_path):
+    monkeypatch.setattr("cpjudge.engine.sandbox.HAS_POSIX", True)
+    monkeypatch.setattr("cpjudge.engine.sandbox.os.geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr("cpjudge.engine.sandbox.get_sandbox_user_ids", lambda _user: (10001, 10001))
+
+    args = build_bwrap_args(["true"], tmp_path)
+
+    assert ["--unshare-user", "--uid", "10001", "--gid", "10001"] == args[
+        args.index("--unshare-user"):args.index("--unshare-user") + 5
+    ]
+
+
 def test_student_environment_does_not_inherit_application_secrets(monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "application-secret")
     assert "SECRET_KEY" not in build_child_environment()

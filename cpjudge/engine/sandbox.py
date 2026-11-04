@@ -10,6 +10,7 @@ Enforces:
 - Process group isolation (os.setsid) for clean teardown of child processes/fork bombs
 - Optional bubblewrap (bwrap) isolation with network namespace isolation (--unshare-net)
 """
+import logging
 import os
 import math
 from functools import lru_cache
@@ -19,6 +20,8 @@ import subprocess
 import sys
 import tempfile
 from typing import Callable, List, Optional, Tuple
+
+logger = logging.getLogger("cpjudge.engine.sandbox")
 
 try:
     import pwd
@@ -59,13 +62,17 @@ def is_bwrap_available(sandbox_user: Optional[str] = "judge_sandbox") -> bool:
             command[0] = bwrap_path
             result = subprocess.run(
                 command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 timeout=2.0,
                 check=False,
             )
+            if result.returncode != 0:
+                err_text = result.stderr.decode("utf-8", errors="replace").strip()
+                logger.warning(f"Bubblewrap availability check failed (exit {result.returncode}): {err_text}")
             return result.returncode == 0
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning(f"Bubblewrap availability check encountered exception: {exc}")
         return False
 
 
@@ -96,7 +103,7 @@ def build_bwrap_args(
         target_uid, target_gid = get_sandbox_user_ids(sandbox_user or "judge_sandbox")
         if target_uid is None or target_gid is None:
             raise RuntimeError(f"Sandbox user '{sandbox_user}' does not exist.")
-        bwrap_cmd.extend(["--uid", str(target_uid), "--gid", str(target_gid)])
+        bwrap_cmd.extend(["--unshare-user", "--uid", str(target_uid), "--gid", str(target_gid)])
     bwrap_cmd.extend([
         "--bind", work_dir, work_dir,
         "--chdir", work_dir,

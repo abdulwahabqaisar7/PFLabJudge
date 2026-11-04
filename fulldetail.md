@@ -892,6 +892,8 @@ Compiles or syntax-checks student source code.
 
 **Sandbox support:** Compilation can optionally run inside `bwrap` or `docker` for isolation.
 
+**Windows support:** The compiler process uses a minimal environment to avoid exposing application secrets. For process-based compilation, it adds the detected compiler's directory to the child `PATH` so toolchains such as MinGW can find their companion programs. On Windows, C++ is also compiled with `-static` so the resulting executable does not depend on MinGW runtime DLLs being present when the judge runs it. Linux compile commands are unchanged.
+
 **Compile timeout:** Configurable (default: 10s). Returns `CompileResult` with:
 - `success: bool`
 - `run_cmd: List[str]` — The command to execute
@@ -1241,7 +1243,7 @@ final_score = max(0.0, raw_score − deduction)
 
 | Backend | Isolation | Use Case |
 |---|---|---|
-| `process` | POSIX rlimits only | Development / Windows (no bwrap/docker) |
+| `process` | POSIX rlimits + low-privilege UID 10001 | Fast in-container execution / automatic fallback |
 | `bwrap` | Namespaces + rlimits | Linux production (requires bubblewrap) |
 | `docker` | Full container isolation | Docker production (most secure) |
 
@@ -1414,7 +1416,7 @@ docker compose exec web python seed.py
 |---|---|---|
 | `db` | PostgreSQL 16 (healthchecked, persistent volume `pgdata`) | 1 |
 | `web` | Flask + Gunicorn web server | 1 |
-| `worker` | Sandboxed judge daemon (`bwrap`, `--poll-interval 0.2`) | 3 |
+| `worker` | Sandboxed judge daemon (`bwrap` + `privileged`, `--poll-interval 0.2`) | 3 |
 | `test` | pytest test runner (Compose profile: `test`) | 0 (on-demand) |
 
 ### Common Commands

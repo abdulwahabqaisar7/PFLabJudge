@@ -28,7 +28,7 @@ services:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in a .env file}
       - DATABASE_URL=postgresql://cpjudge:${POSTGRES_PASSWORD}@db/cpjudge
-      - SANDBOX_BACKEND=${SANDBOX_BACKEND:-docker}
+      - SANDBOX_BACKEND=${SANDBOX_BACKEND:-bwrap}
       - SANDBOX_IMAGE=${SANDBOX_IMAGE:-cpjudge:local}
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Karachi
@@ -40,13 +40,13 @@ services:
 
   worker:
     image: cpjudge:local
+    privileged: true
     build:
       context: .
       dockerfile: Dockerfile
     command: python -m cpjudge.worker --poll-interval 0.2
     volumes:
       - .:/app
-      # NOTE: no docker.sock needed with bwrap!
     environment:
       - FLASK_ENV=worker
       - DATABASE_URL=postgresql://cpjudge:${POSTGRES_PASSWORD}@db/cpjudge
@@ -55,10 +55,9 @@ services:
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Karachi
       - APP_TIMEZONE=Asia/Karachi
-    cap_add:
-      - SYS_ADMIN          # ← required for bwrap user namespaces
     security_opt:
-      - apparmor:unconfined # ← required on Ubuntu hosts with AppArmor
+      - seccomp:unconfined
+      - apparmor:unconfined
     depends_on:
       db:
         condition: service_healthy

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import py_compile
+import shutil
 import subprocess
 import sys
 import time
@@ -131,6 +132,8 @@ class Compiler:
             str(bin_path),
             "-lm",
         ]
+        if os.name == "nt":
+            cmd.insert(1, "-static")
         res = self._run_compiler_cmd(cmd, bin_path)
         if res.success and bin_path.exists():
             try:
@@ -188,6 +191,13 @@ class Compiler:
             sandbox_user=self.sandbox_user,
             drop_privileges=False,
         )
+        compiler_env = build_child_environment()
+        compiler_path = shutil.which(cmd[0])
+        if compiler_path:
+            compiler_dir = str(Path(compiler_path).resolve().parent)
+            compiler_env["PATH"] = os.pathsep.join(
+                path for path in (compiler_dir, compiler_env.get("PATH", "")) if path
+            )
         try:
             proc = subprocess.run(
                 cmd,
@@ -196,7 +206,7 @@ class Compiler:
                 text=True,
                 timeout=self.compile_timeout,
                 cwd=str(work_dir),
-                env=build_child_environment(),
+                env=compiler_env,
                 preexec_fn=preexec,
                 check=False,
             )

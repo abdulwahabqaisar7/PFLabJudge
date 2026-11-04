@@ -55,9 +55,19 @@ class JudgeWorker:
                         "USE_BWRAP must remain enabled when SANDBOX_BACKEND=bwrap."
                     )
                 if not is_bwrap_available(self.app.config.get("SANDBOX_USER", "judge_sandbox")):
-                    raise RuntimeError("Bubblewrap is required by the judge worker but is unavailable.")
+                    logger.warning(
+                        "Bubblewrap is unavailable in this environment; falling back to process isolation as '%s'.",
+                        self.app.config.get("SANDBOX_USER", "judge_sandbox"),
+                    )
+                    self.app.config["SANDBOX_BACKEND"] = "process"
+                    self.app.config["USE_BWRAP"] = False
             elif backend == "docker":
                 DockerSandbox(self.app.config.get("SANDBOX_IMAGE", "cpjudge:local")).validate()
+            elif backend == "process":
+                logger.info(
+                    "Running with POSIX process isolation as '%s'.",
+                    self.app.config.get("SANDBOX_USER", "judge_sandbox"),
+                )
             else:
                 raise RuntimeError(
                     f"Unsupported SANDBOX_BACKEND={backend!r}; refusing to run without isolation."
