@@ -1479,5 +1479,3 @@ sequenceDiagram
 ```
 
 ---
-
-*Generated automatically by analyzing the PUCIT-PF-LAB-JUDGE project source code — November 2026.*
